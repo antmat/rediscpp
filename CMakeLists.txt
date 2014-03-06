@@ -26,3 +26,12 @@ add_executable(test
 )
 
 target_link_libraries(test rediscpp)
+
+install(TARGETS rediscpp DESTINATION ${LIBDIR})
+install(FILES
+    "${REDISCPP_SDIR}/pool.hpp"
+    "${REDISCPP_SDIR}/connection.hpp"
+    "${REDISCPP_SDIR}/wrapper.hpp"
+    "${REDISCPP_SDIR}/connection_param.hpp"
+    "${REDISCPP_SDIR}/exception.hpp"
+    DESTINATION include/rediscpp)

@@ -1,0 +1,25 @@
+Source: rediscpp
+Section: unknown
+Priority: extra
+Maintainer: Anton Matveenko <antmat@me.com>
+Build-Depends: debhelper (>= 7.0.50~), cmake, libhiredis-dev, libhiredis0.10
+Standards-Version: 3.8.4
+Homepage: <insert the upstream URL, if relevant>
+
+Package: rediscpp
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Simple redis cpp client
+ Simple redis cpp client
+
+Package: rediscpp-dev
+Architecture: any
+Depends: rediscpp
+Description: Simple redis cpp client (development files)
+ Simple redis cpp client (development files)
+
+Package: rediscpp-dbg
+Architecture: any
+Depends: rediscpp
+Description: Simple redis cpp client (debugging symbols)
+ Simple redis cpp client (debugging symbols)

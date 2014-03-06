@@ -1,0 +1,5 @@
+rediscpp (1.0-1) unstable; urgency=low
+
+  * new package for rediscpp library
+
+ -- Anton Matveenko <antmat@nigma.ru>  Thu, 20 Feb 2014 17:46:54 +0700

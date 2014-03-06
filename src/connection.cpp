@@ -2,7 +2,6 @@
 #define get_prefixed_key const std::string prefixed_key = has_prefix() ? add_prefix_to_key(key) : key
 namespace Redis {
 
-
     Connection::Connection(const ConnectionParam &_connection_param) :
             connection_param(_connection_param),
             available(false),
