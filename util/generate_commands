@@ -1,0 +1,78 @@
+#!/usr/bin/php
+<?php
+
+//$data = file_get_contents("http://redis.io/commands");
+$data = file_get_contents("/tmp/redis_comm");
+$data = preg_replace("/^.*(<section id='commands'>.*?<\/section>).*$/us", "$1", $data);
+$xml = new SimpleXmlElement($data);
+$commands = array();
+foreach($xml->ul->li as $command) {
+    //var_dump($command->attributes()->{data-group});
+    $commands[$command->attributes()->{data-group}->__toString()][] = array(
+            "command" => $command->span[0]->a->__toString(),
+            "param" => $command->span[0]->span->__toString(),
+            "description" => $command->span[1]->__toString());
+}
+$hpp_data = "";
+$cpp_data = "";
+foreach($commands as $key=> $command_set) {
+    $hpp_data .= "\n/*********************** $key commands ***********************/\n";
+    $cpp_data .= "\n/*********************** $key commands ***********************/\n";
+    foreach($command_set as $command) {
+        $data = "";
+        $data .= "/* ".$command["description"]." */\n";
+        $data .= "bool ".mb_strtolower($command["command"])."(";
+        $start = true;
+        $params = preg_split("/\n/u", $command["param"]);
+        foreach($params as $param) {
+            $param = trim($param);
+            if(empty($param)) {
+                continue;
+            }
+            if($param[0] != '[') {
+                if(!$start) {
+                    $data .= ', ';
+                }
+                if($param == "key") {
+                    $data .= "KeyRef $param";
+                }
+                elseif ($param == "key [key ...]") {
+                    $data .= "KeyVecRef keys";
+                }
+                else {
+                    $data .= "VAL $param";
+                }
+            }
+            elseif(preg_match("/^\[\w+\]$/u", $param)) {
+                if(!$start) {
+                    $data .= ', ';
+                }
+                $data .= "bool ". mb_strtolower(preg_replace("/[\[\]]/u", "", $param)) ." = false";
+            }
+            else {
+                if(!$start) {
+                    $data .= ' /*, ';
+                }
+                else {
+                    $data .= ' /* ';
+                }
+                $data .= $param . " */";
+            }
+            $start = false;
+        }
+        $hpp_data .= $data;
+        $cpp_data .= preg_replace("/^bool /u", "bool Connection::", $data);
+        $hpp_data .= ");\n\n";
+        $cpp_data .= ") {
+    assert(false);//generated body. Need fix
+    Reply reply;
+    get_prefixed_key;
+    if(run_command(\"\")) {
+        return true;
+    }
+    return false;
+}\n\n";
+    }
+}
+echo $hpp_data;
+echo $cpp_data;

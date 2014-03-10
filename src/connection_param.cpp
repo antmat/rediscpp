@@ -1,11 +1,12 @@
 #include "connection_param.hpp"
 namespace Redis {
-    ConnectionParam ConnectionParam::default_connection_param = {"127.0.0.1", 6379, 0, "", 1000, 1000, true, false};
+    ConnectionParam ConnectionParam::default_connection_param = {"127.0.0.1", 6379, "", 0, "", 1000, 1000, true, false};
     ConnectionParam::ConnectionParam(
-            std::string const &_host,
+            const std::string &_host,
             unsigned int _port,
+            const std::string& _password,
             unsigned int _db_num,
-            std::string const &_prefix,
+            const std::string &_prefix,
             unsigned int _connect_timeout_ms,
             unsigned int _operation_timeout_ms,
             bool _reconnect_on_failure,
@@ -13,6 +14,7 @@ namespace Redis {
     ) :
             host(_host),
             port(_port),
+            password(_password),
             db_num(_db_num),
             prefix(_prefix),
             connect_timeout_ms(_connect_timeout_ms),

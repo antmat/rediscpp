@@ -18,6 +18,7 @@ namespace Redis {
     Connection::Connection(
             const std::string &host,
             unsigned int port,
+            const std::string& _password,
             unsigned int db_num,
             const std::string &prefix,
             unsigned int connect_timeout_ms,
@@ -25,10 +26,10 @@ namespace Redis {
             bool reconnect_on_failure,
             bool throw_on_error
     ) :
-            Connection(ConnectionParam(host, port, db_num, prefix, connect_timeout_ms, operation_timeout_ms, reconnect_on_failure, throw_on_error))
+            Connection(ConnectionParam(host, port, _password, db_num, prefix, connect_timeout_ms, operation_timeout_ms, reconnect_on_failure, throw_on_error))
     {}
 
-    bool Connection::switch_db(unsigned int db_num) {
+    bool Connection::switch_db(long db_num) {
         return run_command("SELECT %d", db_num);
     }
 
@@ -38,12 +39,7 @@ namespace Redis {
         if (context == nullptr) {
             available = false;
         }
-        else if (context->err) {
-            available = false;
-        }
-        else {
-            available = true;
-        }
+        else available = context->err ? false : true;
         return available;
     }
 
@@ -61,7 +57,7 @@ namespace Redis {
         va_copy(ap2,ap);
         reply.reset(static_cast<redisReply*>(redisvCommand(context.get(), format, ap2)));
         va_end(ap2);
-        if((reply == nullptr || context->err) && connection_param.reconnect_on_failure) {
+        if((reply.get() == nullptr || context->err) && connection_param.reconnect_on_failure) {
             reconnect();
             if (!is_available()) {
                 if(connection_param.throw_on_error) {
@@ -71,7 +67,7 @@ namespace Redis {
             }
             reply.reset(static_cast<redisReply*>(redisvCommand(context.get(), format, ap)));
         }
-        if(reply == nullptr || context->err) {
+        if(reply.get() == nullptr || context->err) {
             if(connection_param.throw_on_error) {
                 throw Redis::Exception(context.get(), reply.get());
             }
@@ -90,7 +86,7 @@ namespace Redis {
         return false;
     }
 
-    bool Connection::hincrby(const std::string &key, const std::string &field, long increment, long long &result) {
+    /*bool Connection::hincrby(const std::string &key, const std::string &field, long increment, long long &result) {
         Reply reply;
         get_prefixed_key;
         if(run_command("HINCRBY \"%b\" \"%b\" %l", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), increment)) {
@@ -98,12 +94,12 @@ namespace Redis {
             return true;
         }
         return false;
-    }
+    }*/
 
-    bool Connection::set(const std::string &key, const std::string &value) {
+    /*bool Connection::set(KeyRef &key, const KeyRef &value) {
         get_prefixed_key;
         return run_command("SET \"%b\" %b", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size());
-    }
+    }*/
 
     std::string Connection::add_prefix_to_key(const std::string &key) {
         return connection_param.prefix + key;

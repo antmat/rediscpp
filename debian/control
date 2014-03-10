@@ -6,20 +6,20 @@ Build-Depends: debhelper (>= 7.0.50~), cmake, libhiredis-dev, libhiredis0.10
 Standards-Version: 3.8.4
 Homepage: <insert the upstream URL, if relevant>
 
-Package: rediscpp
+Package: librediscpp
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Simple redis cpp client
  Simple redis cpp client
 
-Package: rediscpp-dev
+Package: librediscpp-dev
 Architecture: any
-Depends: rediscpp
+Depends: librediscpp (= ${binary:Version})
 Description: Simple redis cpp client (development files)
  Simple redis cpp client (development files)
 
-Package: rediscpp-dbg
+Package: librediscpp-dbg
 Architecture: any
-Depends: rediscpp
+Depends: librediscpp (= ${binary:Version})
 Description: Simple redis cpp client (debugging symbols)
  Simple redis cpp client (debugging symbols)

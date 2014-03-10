@@ -13,12 +13,8 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-# This has to be exported to make some magic below work.
-export DH_OPTIONS
-export MAKEFLAGS=-j24
-
 override_dh_strip:
-	dh_srip --dbg-package=rediscpp-dbg
+	dh_strip --dbg-package=librediscpp-dbg
 
 %:
 	dh $@
