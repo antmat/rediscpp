@@ -9,6 +9,12 @@
 namespace Redis {
     class Connection {
     public:
+        typedef std::string Key;
+        typedef const std::string& KeyRef;
+        typedef std::vector<Key> KeyVec;
+        typedef const std::vector<Key>& KeyVecRef;
+        friend class Pool;
+        friend class Wrapper;
 
         Connection &operator=(const Connection &other) = delete;
         Connection(const Connection &other) = delete;
@@ -617,12 +623,6 @@ namespace Redis {
 //        bool zscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
-        typedef std::string Key;
-        typedef const std::string& KeyRef;
-        typedef std::vector<Key> KeyVec;
-        typedef const std::vector<Key>& KeyVecRef;
-        friend class Pool;
-        friend class Wrapper;
     private:
         ConnectionParam connection_param;
         bool available;

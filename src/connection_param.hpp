@@ -63,7 +63,7 @@ namespace Redis {
         ConnectionParam(
                 const std::string &_host = default_connection_param.host,
                 unsigned int _port = default_connection_param.port,
-                const std::string& password,
+                const std::string& password = default_connection_param.password,
                 unsigned int _db_num = default_connection_param.db_num,
                 const std::string &_prefix = default_connection_param.prefix,
                 unsigned int connect_timeout_ms = default_connection_param.connect_timeout_ms,
