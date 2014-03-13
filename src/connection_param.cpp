@@ -26,6 +26,7 @@ namespace Redis {
     ConnectionParam::ConnectionParam(ConnectionParam &&other) :
             host(std::move(other.host)),
             port(other.port),
+            password(std::move(other.password)),
             db_num(other.db_num),
             prefix(std::move(other.prefix)),
             connect_timeout_ms(other.connect_timeout_ms),

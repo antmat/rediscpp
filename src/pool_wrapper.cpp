@@ -1,15 +1,15 @@
-#include "wrapper.hpp"
+#include "pool_wrapper.hpp"
 namespace Redis {
-    Wrapper::Wrapper(Connection &_redis) :
+    PoolWrapper::PoolWrapper(Connection &_redis) :
             redis(&_redis) {
     }
 
-    Wrapper::Wrapper(Wrapper &&other) :
+    PoolWrapper::PoolWrapper(PoolWrapper &&other) :
             redis(other.redis) {
         other.redis = nullptr;
     }
 
-    Wrapper::~Wrapper() {
+    PoolWrapper::~PoolWrapper() {
         if (redis != nullptr) {
             redis->done();
         }

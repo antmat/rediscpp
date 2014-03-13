@@ -3,4 +3,4 @@
 #include "connection_param.hpp"
 #include "exception.hpp"
 #include "pool.hpp"
-#include "wrapper.hpp"
+#include "pool_wrapper.hpp"

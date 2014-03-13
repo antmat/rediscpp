@@ -5,6 +5,16 @@ namespace Redis {
         return err_str.c_str();
     }
 
+    Exception::Exception(const std::string& message) :
+            err_str(message)
+    {
+    }
+
+    Exception::Exception(std::string&& message) :
+            err_str(message)
+    {
+    }
+
     Exception::Exception(redisContext* context) :
             err_str(context == nullptr ?
                     std::string("Redis Exception: nullptr passed as context. Please report a bug.") :

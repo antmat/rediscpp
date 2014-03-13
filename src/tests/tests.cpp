@@ -15,6 +15,7 @@ bool test_simple() {
     param.port = redis_port;
     Redis::Connection conn(param);
     test_assert(conn.set("testkey", "testvalue"));
+
     std::string res;
     test_assert(conn.get("testkey", res));
     test_assert(res == "testvalue");
