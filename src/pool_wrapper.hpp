@@ -6,10 +6,12 @@ namespace Redis {
     private:
         Connection* redis;
     public:
+        PoolWrapper();
         PoolWrapper(Connection& _redis);
         ~PoolWrapper();
         PoolWrapper(const PoolWrapper& other) = delete;
         PoolWrapper& operator=(const PoolWrapper& other) = delete;
+        PoolWrapper& operator=(PoolWrapper&& other);
         PoolWrapper(PoolWrapper &&other);
 
         Connection& operator*() {

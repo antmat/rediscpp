@@ -10,21 +10,23 @@
 namespace Redis {
     class Pool {
     private:
+        static constexpr size_t bucket_count = 100;
         Pool() :
-                instances(),
-                lock() {
+                instances(bucket_count),
+                locks(bucket_count) {
         }
 
         Pool(const Pool &other) = delete;
         Pool &operator=(const Pool &other) = delete;
-        std::map<unsigned long, std::vector<std::unique_ptr<Connection> > > instances;
-        std::mutex lock;
+        std::vector<std::map<unsigned long, std::vector<std::unique_ptr<Connection> > > > instances;
+        std::vector<std::mutex> locks;
     public:
         static Pool &instance() {
             static Pool inst;
             return inst;
         }
 
+        size_t get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
         PoolWrapper get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
         PoolWrapper get(const std::string &host = ConnectionParam::get_default_connection_param().host,
                 unsigned int port = ConnectionParam::get_default_connection_param().port,

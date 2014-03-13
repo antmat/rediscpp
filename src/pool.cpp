@@ -2,6 +2,11 @@
 #include <thread>
 
 namespace Redis {
+
+    size_t Pool::get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
+        static std::hash<std::string> hash_fn;
+        return hash_fn(key) % connection_params.size();
+    }
     PoolWrapper Pool::get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
         static std::hash<std::string> hash_fn;
         return get(connection_params[hash_fn(key) % connection_params.size()]);
@@ -10,8 +15,9 @@ namespace Redis {
     PoolWrapper Pool::get(const ConnectionParam &connection_param) {
         static std::hash<std::string> hash_fn;
         unsigned long hash = hash_fn(connection_param.host) + connection_param.port;
-        std::lock_guard<std::mutex> guard(lock);
-        std::vector<std::unique_ptr<Connection>> &vec = instances[hash];
+        size_t bucket = hash % bucket_count;
+        std::lock_guard<std::mutex> guard(locks[bucket]);
+        std::vector<std::unique_ptr<Connection>> &vec = instances[bucket][hash];
         for (size_t i = 0; vec.size() > i; i++) {
             if (!vec[i]->is_used()) {
                 vec[i]->set_used();

@@ -218,10 +218,10 @@ namespace Redis {
         bool set(KeyVecRef keys, KeyVec& value, long long expire, ExpireType expire_type,  SetType set_type, bool& was_set);
 
         /* Sets or clears the bit at offset in the string value stored at key */
-        bool setbit(KeyRef key,long long offset, Bit value, Bit& original_bit);
+        bool set_bit(KeyRef key,long long offset, Bit value, Bit& original_bit);
 
         /* Sets or clears the bit at offset in the string value stored at key */
-        bool setbit(KeyRef key,long long offset, Bit value);
+        bool set_bit(KeyRef key,long long offset, Bit value);
 
         /* Set the value and expiration of a key */
         bool setex(KeyRef key, KeyRef value, long long seconds);
@@ -588,7 +588,16 @@ namespace Redis {
 
         /*********************** set commands ***********************/
         /* Add one or more members to a set */
-//        bool sadd(KeyRef key, VAL member [member ...]);
+        bool sadd(KeyRef key, KeyRef member);
+
+        /* Add one or more members to a set */
+        bool sadd(KeyRef key, KeyVecRef members);
+
+        /* Add one or more members to a set */
+        bool sadd(KeyRef key, KeyRef member, bool& was_added);
+
+        /* Add one or more members to a set */
+        bool sadd(KeyRef key, KeyVecRef members, long& num_of_added);
 
         /* Get the number of members in a set */
 //        bool scard(KeyRef key);
@@ -600,7 +609,7 @@ namespace Redis {
 //        bool sdiffstore(VAL destination, KeyVecRef keys);
 
         /* Intersect multiple sets */
-//        bool sinter(KeyVecRef keys);
+        bool sinter(KeyVecRef keys, KeyVec& result);
 
         /* Intersect multiple sets and store the resulting set in a key */
 //        bool sinterstore(VAL destination, KeyVecRef keys);
@@ -704,6 +713,11 @@ namespace Redis {
         inline bool is_used() { return used; }
         void update_param(const ConnectionParam& new_param);
         bool run_command(Reply& reply, const char* format, va_list ap);
+        bool run_command(Reply& reply, const std::vector<const char*>& commands, const std::vector<size_t>& sizes);
+        inline bool run_command(const std::vector<const char*>& commands, const std::vector<size_t>& sizes) {
+            Reply reply;
+            return run_command(reply, commands, sizes);
+        }
         inline bool run_command(Reply& reply, const char* format, ...) {
             va_list ap;
             va_start(ap,format);

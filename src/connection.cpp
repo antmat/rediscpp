@@ -1,7 +1,23 @@
 #include <cstring>
 #include "connection.hpp"
 #include "exception.hpp"
+#include <iostream>
 #define get_prefixed_key(key) const std::string prefixed_key = has_prefix() ? add_prefix_to_key(key) : key
+#define get_prefixed_key_with_p(key, prefixed_key) const std::string prefixed_key = has_prefix() ? add_prefix_to_key(key) : key
+#define get_prefixed_keys(keys) \
+const KeyVec* key_vec_ptr;\
+std::vector<std::string> prefixed_keys;\
+if(has_prefix()) {\
+    key_vec_ptr = &prefixed_keys;\
+    prefixed_keys.reserve(keys.size());\
+    for (size_t i = 0; i < keys.size(); i++) {\
+        prefixed_keys.push_back(add_prefix_to_key(keys[i]));\
+    }\
+}\
+else {\
+    key_vec_ptr = &keys;\
+}
+
 namespace Redis {
 
 
@@ -77,6 +93,67 @@ namespace Redis {
             available = (err == Error::NONE);
         }
         return available;
+    }
+
+    bool Connection::run_command(Reply& reply, const std::vector<const char*>& commands, const std::vector<size_t>& sizes) {
+        if (!is_available() && connection_param.reconnect_on_failure) {
+            reconnect();
+            if (!is_available()) {
+                if (connection_param.throw_on_error) {
+                    throw Redis::Exception(get_error());
+                }
+                return false;
+            }
+        }
+        redis_assert(commands.size() == sizes.size());
+        reply.reset(static_cast<redisReply*>(redisCommandArgv(context.get(), static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data())));
+        if((reply.get() == nullptr || context->err) && connection_param.reconnect_on_failure) {
+            reconnect();
+            if (!is_available()) {
+                if(connection_param.throw_on_error) {
+                    throw Redis::Exception(get_error());
+                }
+                return false;
+            }
+            reply.reset(static_cast<redisReply*>(redisCommandArgv(context.get(), static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data())));
+        }
+        if(context->err) {
+            switch (context->err) {
+                case 0:
+                    err = Error::NONE;
+                    break;
+                case REDIS_ERR_EOF:
+                    err = Error::HIREDIS_EOF;
+                    break;
+                case REDIS_ERR_IO:
+                    err = Error::HIREDIS_IO;
+                    break;
+                case REDIS_ERR_OOM:
+                    err = Error::HIREDIS_OOM;
+                    break;
+                case REDIS_ERR_PROTOCOL:
+                    err = Error::HIREDIS_PROTOCOL;
+                    break;
+                case REDIS_ERR_OTHER:
+                    err = Error::HIREDIS_OTHER;
+                    break;
+                default:
+                    err = Error::HIREDIS_UNKNOWN;
+                    break;
+            }
+            if(connection_param.throw_on_error) {
+                throw Redis::Exception(get_error());
+            }
+            return false;
+        }
+        if(reply.get() == nullptr) {
+            err = Error::REPLY_IS_NULL;
+            if(connection_param.throw_on_error) {
+                throw Redis::Exception(get_error());
+            }
+            return false;
+        }
+        return true;
     }
 
     bool Connection::run_command(Reply& reply, const char* format, va_list ap) {
@@ -232,32 +309,52 @@ namespace Redis {
 
     /* Perform bitwise operations between strings */
     bool Connection::bitop(BitOperation operation, Connection::KeyRef destkey, Connection::KeyVecRef keys, long long& size_of_dest) {
-        std::string command("BITCOUNT ");
+        //TODO Preformance!
+        std::vector<size_t> sizes;
+        sizes.reserve(keys.size()+3); //command, key, operation and key_vector
+
+        KeyVec commands;
+        commands.reserve(keys.size()+3); //command, key, operation and key_vector
+
+        commands.push_back("BITCOUNT");
+        sizes.push_back(8);
+
         switch (operation) {
             case BitOperation::AND:
-                command += "AND \"";
+                commands.push_back("AND");
+                sizes.push_back(3);
                 break;
             case BitOperation::OR:
-                command += "OR \"";
+                commands.push_back("OR");
+                sizes.push_back(2);
                 break;
             case BitOperation::NOT:
-                command += "NOT \"";
+                commands.push_back("NOT");
+                sizes.push_back(3);
                 redis_assert(keys.size() == 1);
                 break;
             case BitOperation::XOR:
-                command += "XOR \"";
+                commands.push_back("XOR");
+                sizes.push_back(3);
                 break;
             default: //Fool proof of explicit casting BitOperation to integer and asigning improper value;
                 redis_assert_unreachable();
                 break;
         }
         get_prefixed_key(destkey);
-        command += prefixed_key+"\" ";
+        commands.push_back(prefixed_key);
+        sizes.push_back(prefixed_key.size());
         for(size_t i=0; i < keys.size(); i++) {
-            command += '"'+keys[i]+"\" ";
+            get_prefixed_key_with_p(keys[i], p_key);
+            commands.push_back(p_key);
+            sizes.push_back(p_key.size());
         }
         Reply reply;
-        if(run_command(reply, command.c_str())) {
+        std::vector<const char*> comm_c_strings(commands.size());
+        for(size_t i=0; i<commands.size(); i++) {
+            comm_c_strings[i] = commands[i].c_str();
+        }
+        if(run_command(reply, comm_c_strings, sizes)) {
             size_of_dest = reply->integer;
             return true;
         }
@@ -332,6 +429,36 @@ namespace Redis {
         get_prefixed_key(key);
         if(run_command(reply, "GET %b", prefixed_key.c_str(), prefixed_key.size())) {
             result = reply->str;
+            return true;
+        }
+        return false;
+    }
+
+    /* Get the value of multiple keys */
+    bool Connection::get(Connection::KeyVecRef keys, Connection::KeyVec& result) {
+        std::vector<size_t> sizes(keys.size()+1);
+        std::vector<const char*> command_parts_c_strings(keys.size()+1);
+        command_parts_c_strings[0] = "MGET";
+        sizes[0] = 4;
+        Reply reply;
+        get_prefixed_keys(keys);
+        for(size_t i=0; i<key_vec_ptr->size(); i++) {
+            command_parts_c_strings[i+1] = (*key_vec_ptr)[i].c_str();
+            sizes[i+1] = (*key_vec_ptr)[i].size();
+        }
+        if(run_command(reply, command_parts_c_strings, sizes)) {
+            redis_assert(reply->type == REDIS_REPLY_ARRAY);
+            for(size_t i=0; i < reply->elements; i++) {
+                if(reply->element[i]->type == REDIS_REPLY_STRING) {
+                    result.push_back(reply->element[i]->str);
+                }
+                else if (reply->element[i]->type == REDIS_REPLY_NIL) {
+                    result.push_back(std::string());
+                }
+                else {
+                    redis_assert_unreachable();
+                }
+            }
             return true;
         }
         return false;
@@ -446,10 +573,10 @@ namespace Redis {
         return run_command("INCRBYFLOAT %b %f", prefixed_key.c_str(), prefixed_key.size(), increment);
     }
 
-//    /* Get the values of all the given keys */
-//    bool Connection::mget(Connection::KeyVecRef keys, Connection::KeyVec& result) {
-//        return get(keys, result);
-//    }
+    /* Get the values of all the given keys */
+    bool Connection::mget(Connection::KeyVecRef keys, Connection::KeyVec& result) {
+        return get(keys, result);
+    }
 //
 //    /* Set multiple keys to multiple values */
 //    bool Connection::mset(Connection::KeyVecRef keys, Connection::KeyVecRef values);
@@ -485,20 +612,41 @@ namespace Redis {
         if(redis_version >= 20612) {
             Reply reply;
             get_prefixed_key(key);
-            std::string command("SET \""+prefixed_key+"\" \""+value+"\" ");
+            bool ret;
             if(expire_type == ExpireType::SEC) {
-                command += "EX " +std::to_string(expire)+' ';
+                if(set_type == SetType::IF_EXIST) {
+                    ret = run_command(reply, "SET %b %b EX %lli XX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
+                else if(set_type == SetType::IF_NOT_EXIST) {
+                    ret = run_command(reply, "SET %b %b EX %lli NX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
+                else {
+                    ret = run_command(reply, "SET %b %b EX %lli", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
             }
             else if(expire_type == ExpireType::MSEC) {
-                command += "PX " +std::to_string(expire)+' ';
+                if(set_type == SetType::IF_EXIST) {
+                    ret = run_command(reply, "SET %b %b PX %lli XX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
+                else if(set_type == SetType::IF_NOT_EXIST) {
+                    ret = run_command(reply, "SET %b %b PX %lli NX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
+                else {
+                    ret = run_command(reply, "SET %b %b PX %lli", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size(), expire);
+                }
             }
-            if(set_type == SetType::IF_EXIST) {
-                command += "XX ";
+            else {
+                if(set_type == SetType::IF_EXIST) {
+                    ret = run_command(reply, "SET %b %b XX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size());
+                }
+                else if(set_type == SetType::IF_NOT_EXIST) {
+                    ret = run_command(reply, "SET %b %b NX", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size());
+                }
+                else {
+                    ret = run_command(reply, "SET %b %b", prefixed_key.c_str(), prefixed_key.size(), value.c_str(), value.size());
+                }
             }
-            else if(set_type == SetType::IF_NOT_EXIST) {
-                command += "NX ";
-            }
-            if(run_command(command.c_str())) {
+            if(ret) {
                 was_set = reply->type != REDIS_REPLY_NIL;
                 return true;
             }
@@ -737,6 +885,354 @@ namespace Redis {
 //
 //    /* Prepend a value to a list, only if the list exists */
 //    bool Connection::lpushx(Connection::KeyRef key, Connection::KeyRef value);
+
+
+    /* Get a range of elements from a list */
+//        bool lrange(KeyRef key, VAL start, VAL stop);
+
+    /* Remove elements from a list */
+//        bool lrem(KeyRef key, VAL count, VAL value);
+
+    /* Set the value of an element in a list by its index */
+//        bool lset(KeyRef key, VAL index, VAL value);
+
+    /* Trim a list to the specified range */
+//        bool ltrim(KeyRef key, VAL start, VAL stop);
+
+    /* Remove and get the last element in a list */
+//        bool rpop(KeyRef key);
+
+    /* Remove the last element in a list, append it to another list and return it */
+//        bool rpoplpush(VAL source, VAL destination);
+
+    /* Append one or multiple values to a list */
+//        bool rpush(KeyRef key, VAL value [value ...]);
+
+    /* Append a value to a list, only if the list exists */
+//        bool rpushx(KeyRef key, VAL value);
+
+
+    /*********************** generic commands ***********************/
+    /* Delete a key */
+//        bool del(KeyVecRef keys);
+
+    /* Return a serialized version of the value stored at the specified key. */
+//        bool dump(KeyRef key);
+
+    /* Determine if a key exists */
+//        bool exists(KeyRef key);
+
+    /* Set a key's time to live in seconds */
+//        bool expire(KeyRef key, VAL seconds);
+
+    /* Set the expiration for a key as a UNIX timestamp */
+//        bool expireat(KeyRef key, VAL timestamp);
+
+    /* Find all keys matching the given pattern */
+//        bool keys(VAL pattern);
+
+    /* Atomically transfer a key from a Redis instance to another one. */
+//        bool migrate(VAL host, VAL port, KeyRef key, VAL destination-db, VAL timeout, bool copy = false, bool replace = false);
+
+    /* Move a key to another database */
+//        bool move(KeyRef key, VAL db);
+
+    /* Inspect the internals of Redis objects */
+//        bool object(VAL subcommand /*, [arguments [arguments ...]] */);
+
+    /* Remove the expiration from a key */
+//        bool persist(KeyRef key);
+
+    /* Set a key's time to live in milliseconds */
+//        bool pexpire(KeyRef key, VAL milliseconds);
+
+    /* Set the expiration for a key as a UNIX timestamp specified in milliseconds */
+//        bool pexpireat(KeyRef key, VAL milliseconds-timestamp);
+
+    /* Get the time to live for a key in milliseconds */
+//        bool pttl(KeyRef key);
+
+    /* Return a random key from the keyspace */
+//        bool randomkey();
+
+    /* Rename a key */
+//        bool rename(KeyRef key, VAL newkey);
+
+    /* Rename a key, only if the new key does not exist */
+//        bool renamenx(KeyRef key, VAL newkey);
+
+    /* Create a key using the provided serialized value, previously obtained using DUMP. */
+//        bool restore(KeyRef key, VAL ttl, VAL serialized-value);
+
+    /* Sort the elements in a list, set or sorted set */
+//        bool sort(KeyRef key /*, [BY pattern] */ /*, [LIMIT offset count] */ /*, [GET pattern [GET pattern ...]] */ /*, [ASC|DESC] */, bool alpha = false /*, [STORE destination] */);
+
+    /* Get the time to live for a key */
+//        bool ttl(KeyRef key);
+
+    /* Determine the type stored at key */
+//        bool type(KeyRef key);
+
+    /* Incrementally iterate the keys space */
+//        bool scan(VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+
+
+    /*********************** transactions commands ***********************/
+    /* Discard all commands issued after MULTI */
+//        bool discard();
+
+    /* Execute all commands issued after MULTI */
+//        bool exec();
+
+    /* Mark the start of a transaction block */
+//        bool multi();
+
+    /* Forget about all watched keys */
+//        bool unwatch();
+
+    /* Watch the given keys to determine execution of the MULTI/EXEC block */
+//        bool watch(KeyVecRef keys);
+
+
+    /*********************** scripting commands ***********************/
+    /* Execute a Lua script server side */
+//        bool eval(VAL script, VAL numkeys, KeyVecRef keys, VAL arg [arg ...]);
+
+    /* Execute a Lua script server side */
+//        bool evalsha(VAL sha1, VAL numkeys, KeyVecRef keys, VAL arg [arg ...]);
+
+    /* Check existence of scripts in the script cache. */
+//        bool script exists(VAL script [script ...]);
+
+    /* Remove all the scripts from the script cache. */
+//        bool script flush();
+
+    /* Kill the script currently in execution. */
+//        bool script kill();
+
+    /* Load the specified Lua script into the script cache. */
+//        bool script load(VAL script);
+
+
+    /*********************** hash commands ***********************/
+    /* Delete one or more hash fields */
+//        bool hdel(KeyRef key, VAL field [field ...]);
+
+    /* Determine if a hash field exists */
+//        bool hexists(KeyRef key, VAL field);
+
+    /* Get the value of a hash field */
+//        bool hget(KeyRef key, VAL field);
+
+    /* Get all the fields and values in a hash */
+//        bool hgetall(KeyRef key);
+
+    /* Increment the integer value of a hash field by the given number */
+//        bool hincrby(KeyRef key, VAL field, VAL increment);
+
+    /* Increment the float value of a hash field by the given amount */
+//        bool hincrbyfloat(KeyRef key, VAL field, VAL increment);
+
+    /* Get all the fields in a hash */
+//        bool hkeys(KeyRef key);
+
+    /* Get the number of fields in a hash */
+//        bool hlen(KeyRef key);
+
+    /* Get the values of all the given hash fields */
+//        bool hmget(KeyRef key, VAL field [field ...]);
+
+    /* Set multiple hash fields to multiple values */
+//        bool hmset(KeyRef key, VAL field value [field value ...]);
+
+    /* Set the string value of a hash field */
+//        bool hset(KeyRef key, VAL field, VAL value);
+
+    /* Set the value of a hash field, only if the field does not exist */
+//        bool hsetnx(KeyRef key, VAL field, VAL value);
+
+    /* Get all the values in a hash */
+//        bool hvals(KeyRef key);
+
+    /* Incrementally iterate hash fields and associated values */
+//        bool hscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+
+
+    /*********************** pubsub commands ***********************/
+    /* Listen for messages published to channels matching the given patterns */
+//        bool psubscribe(VAL pattern [pattern ...]);
+
+    /* Inspect the state of the Pub/Sub subsystem */
+//        bool pubsub(VAL subcommand /*, [argument [argument ...]] */);
+
+    /* Post a message to a channel */
+//        bool publish(VAL channel, VAL message);
+
+    /* Stop listening for messages posted to channels matching the given patterns */
+//        bool punsubscribe( /* [pattern [pattern ...]] */);
+
+    /* Listen for messages published to the given channels */
+//        bool subscribe(VAL channel [channel ...]);
+
+    /* Stop listening for messages posted to the given channels */
+//        bool unsubscribe( /* [channel [channel ...]] */);
+
+
+    /*********************** set commands ***********************/
+    /* Add one or more members to a set */
+    bool Connection::sadd(KeyRef key, KeyRef member) {
+        get_prefixed_key(key);
+        return run_command("SADD %b %b", prefixed_key.c_str(), prefixed_key.size(), member.c_str(), member.size());
+    }
+
+    /* Add one or more members to a set */
+    bool Connection::sadd(KeyRef key, KeyRef member, bool& was_added) {
+        Reply reply;
+        get_prefixed_key(key);
+        if(run_command(reply, "SADD %b %b", prefixed_key.c_str(), prefixed_key.size(), member.c_str(), member.size())) {
+            was_added = reply->integer != 0;
+            return true;
+        }
+        return false;
+    }
+
+    /* Add one or more members to a set */
+    bool Connection::sadd(KeyRef key, KeyVecRef members) {
+        if(redis_version < 20400) {
+            bool res = true;
+            for(size_t i=0; i<members.size(); i++) {
+                res = sadd(key, members[i]) && res;
+            }
+            return res;
+        }
+        std::vector<size_t> sizes(members.size()+2);
+        std::vector<const char*> commands(members.size()+2);
+        get_prefixed_key(key);
+        commands[0] = "SADD";
+        sizes[0] = 4;
+        commands[1] = prefixed_key.c_str();
+        sizes[1] = prefixed_key.size();
+        for(size_t i=0; i<members.size(); i++) {
+            commands[i+2] = members[i].c_str();
+            sizes[i+2] = members[i].size();
+        }
+        return run_command(commands, sizes);
+    }
+
+    /* Get the number of members in a set */
+//        bool scard(KeyRef key);
+
+    /* Subtract multiple sets */
+//        bool sdiff(KeyVecRef keys);
+
+    /* Subtract multiple sets and store the resulting set in a key */
+//        bool sdiffstore(VAL destination, KeyVecRef keys);
+
+    /* Intersect multiple sets */
+    bool Connection::sinter(KeyVecRef keys, KeyVec& result) {
+        std::vector<size_t> sizes(keys.size()+1);
+        std::vector<const char*> command_parts_c_strings(keys.size()+1);
+        command_parts_c_strings[0] = "SINTER";
+        sizes[0] = 6;
+        Reply reply;
+        get_prefixed_keys(keys);
+        for(size_t i=0; i<key_vec_ptr->size(); i++) {
+            command_parts_c_strings[i+1] = (*key_vec_ptr)[i].c_str();
+            sizes[i+1] = (*key_vec_ptr)[i].size();
+        }
+        if(run_command(reply, command_parts_c_strings, sizes)) {
+            redis_assert(reply->type == REDIS_REPLY_ARRAY);
+            for(size_t i=0; i < reply->elements; i++) {
+                redis_assert(reply->element[i]->type == REDIS_REPLY_STRING);
+                result.push_back(reply->element[i]->str);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /* Intersect multiple sets and store the resulting set in a key */
+//        bool sinterstore(VAL destination, KeyVecRef keys);
+
+    /* Determine if a given value is a member of a set */
+//        bool sismember(KeyRef key, VAL member);
+
+    /* Get all the members in a set */
+//        bool smembers(KeyRef key);
+
+    /* Move a member from one set to another */
+//        bool smove(VAL source, VAL destination, VAL member);
+
+    /* Remove and return a random member from a set */
+//        bool spop(KeyRef key);
+
+    /* Get one or multiple random members from a set */
+//        bool srandmember(KeyRef key, bool count = false);
+
+    /* Remove one or more members from a set */
+//        bool srem(KeyRef key, VAL member [member ...]);
+
+    /* Add multiple sets */
+//        bool sunion(KeyVecRef keys);
+
+    /* Add multiple sets and store the resulting set in a key */
+//        bool sunionstore(VAL destination, KeyVecRef keys);
+
+    /* Incrementally iterate Set elements */
+//        bool sscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+
+
+    /*********************** sorted_set commands ***********************/
+    /* Add one or more members to a sorted set, or update its score if it already exists */
+//        bool zadd(KeyRef key, VAL score member [score member ...]);
+
+    /* Get the number of members in a sorted set */
+//        bool zcard(KeyRef key);
+
+    /* Count the members in a sorted set with scores within the given values */
+//        bool zcount(KeyRef key, VAL min, VAL max);
+
+    /* Increment the score of a member in a sorted set */
+//        bool zincrby(KeyRef key, VAL increment, VAL member);
+
+    /* Intersect multiple sorted sets and store the resulting sorted set in a new key */
+//        bool zinterstore(VAL destination, VAL numkeys, KeyVecRef keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+
+    /* Return a range of members in a sorted set, by index */
+//        bool zrange(KeyRef key, VAL start, VAL stop, bool withscores = false);
+
+    /* Return a range of members in a sorted set, by score */
+//        bool zrangebyscore(KeyRef key, VAL min, VAL max, bool withscores = false /*, [LIMIT offset count] */);
+
+    /* Determine the index of a member in a sorted set */
+//        bool zrank(KeyRef key, VAL member);
+
+    /* Remove one or more members from a sorted set */
+//        bool zrem(KeyRef key, VAL member [member ...]);
+
+    /* Remove all members in a sorted set within the given indexes */
+//        bool zremrangebyrank(KeyRef key, VAL start, VAL stop);
+
+    /* Remove all members in a sorted set within the given scores */
+//        bool zremrangebyscore(KeyRef key, VAL min, VAL max);
+
+    /* Return a range of members in a sorted set, by index, with scores ordered from high to low */
+//        bool zrevrange(KeyRef key, VAL start, VAL stop, bool withscores = false);
+
+    /* Return a range of members in a sorted set, by score, with scores ordered from high to low */
+//        bool zrevrangebyscore(KeyRef key, VAL max, VAL min, bool withscores = false /*, [LIMIT offset count] */);
+
+    /* Determine the index of a member in a sorted set, with scores ordered from high to low */
+//        bool zrevrank(KeyRef key, VAL member);
+
+    /* Get the score associated with the given member in a sorted set */
+//        bool zscore(KeyRef key, VAL member);
+
+    /* Add multiple sorted sets and store the resulting sorted set in a new key */
+//        bool zunionstore(VAL destination, VAL numkeys, KeyVecRef keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+
+    /* Incrementally iterate sorted sets elements and associated scores */
+//        bool zscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
 }
