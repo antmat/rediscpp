@@ -9,22 +9,9 @@
 #include "connection_param.hpp"
 namespace Redis {
     class Pool {
-    private:
-        static constexpr size_t bucket_count = 100;
-        Pool() :
-                instances(bucket_count),
-                locks(bucket_count) {
-        }
 
-        Pool(const Pool &other) = delete;
-        Pool &operator=(const Pool &other) = delete;
-        std::vector<std::map<unsigned long, std::vector<std::unique_ptr<Connection> > > > instances;
-        std::vector<std::mutex> locks;
     public:
-        static Pool &instance() {
-            static Pool inst;
-            return inst;
-        }
+        static Pool &instance();
 
         size_t get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
         PoolWrapper get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
@@ -39,7 +26,12 @@ namespace Redis {
                 bool throw_on_error = ConnectionParam::get_default_connection_param().throw_on_error
         );
         PoolWrapper get(const ConnectionParam &connection_param);
+
+    private:
+        class Impl;
+        Impl* d;
     };
+
 }
 
 

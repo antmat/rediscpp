@@ -15,7 +15,7 @@ SET (FLAGS_DEFAULT "-fPIC -pipe")
 SET (FLAGS_WARNING 	"-Wall -Werror -Wextra -pedantic -Winit-self -Wconversion")
 SET (FLAGS_CXX_LANG "-std=c++11")
 SET (FLAGS_WARNING_CXX "${FLAGS_WARNING} -Weffc++ -Wold-style-cast -Woverloaded-virtual -Wshadow -Wctor-dtor-privacy -Wnon-virtual-dtor")
-SET (FLAGS_RELEASE "-g -O3 -DNDEBUG")
+SET (FLAGS_RELEASE "-g -O3")
 SET (FLAGS_DEBUG "-ggdb -O3")
 MESSAGE("Build type is ${CMAKE_BUILD_TYPE}")
 

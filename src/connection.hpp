@@ -1,18 +1,22 @@
 #pragma once
 #include <string>
+#include <map>
 #include <vector>
 #include <memory>
-#include <hiredis/hiredis.h>
-#include <assert.h>
+#include <macro.hpp>
 #include "connection_param.hpp"
-#include "macro.hpp"
+
 namespace Redis {
     class Connection {
     public:
+        //Some empiric value after which library will reject commands
+        static constexpr size_t max_key_count_per_command = 50000;
+        static constexpr long default_scan_count = 10; //defaulted by redis (2.8 at least)
         typedef std::string Key;
         typedef const std::string& KeyRef;
         typedef std::vector<Key> KeyVec;
         typedef const std::vector<Key>& KeyVecRef;
+        typedef unsigned long long Id;
         friend class Pool;
         friend class PoolWrapper;
 
@@ -29,44 +33,23 @@ namespace Redis {
             HIREDIS_OTHER,
             HIREDIS_UNKNOWN,
             COMMAND_UNSUPPORTED,
-            UNEXPECTED_INFO_RESULT
+            UNEXPECTED_INFO_RESULT,
+            REPLY_ERR,
+            TOO_LONG_COMMAND
         };
+        enum class BitOperation { AND, OR, XOR, NOT };
+        enum class Bit { ONE, ZERO };
+        enum class ExpireType { NONE, SEC, MSEC };
+        enum class SetType { ALWAYS, IF_EXIST, IF_NOT_EXIST };
+        enum class ListInsertType { AFTER, BEFORE };
 
-        static inline std::string get_error_str(Error err, redisContext* context) {
-            switch (err) {
-                case Error::NONE:
-                    return "";
-                case Error::CONTEXT_IS_NULL:
-                    return "hiredis context is null";
-                case Error::REPLY_IS_NULL:
-                    return "hiredis reply is null";
-                case Error::FLOAT_OUT_OF_RANGE:
-                    return std::string("Number can not be represented by float. ") + (context->err ? std::string("Hiredis err is: ") + context->errstr : std::string());
-                case Error::DOUBLE_OUT_OF_RANGE:
-                    return std::string("Double can not be represented by double") + (context->err ? std::string("Hiredis err is: ") + context->errstr : std::string());
-                case Error::HIREDIS_IO:
-                    return std::string("Hiredis io error. errno:"+std::to_string(errno));
-                case Error::HIREDIS_EOF:
-                    return std::string("Hiredis EOF error: ") + context->errstr;
-                case Error::HIREDIS_PROTOCOL:
-                    return std::string("Hiredis protocol error: ") + context->errstr;
-                case Error::HIREDIS_OOM:
-                    return std::string("Hiredis OOM error: ") + context->errstr;
-                case Error::HIREDIS_OTHER:
-                    return std::string("Hiredis error: ") + context->errstr;
-                case Error::HIREDIS_UNKNOWN:
-                    return std::string("Hiredis UNKNOWN error with code ") + std::to_string(context->err) + " :" + context->errstr;
-                case Error::COMMAND_UNSUPPORTED:
-                    return "Command is unsupported by this redis version" + (context->err ? std::string("Hiredis err is: ") + context->errstr : std::string());
-                case Error::UNEXPECTED_INFO_RESULT:
-                    return "Info command returned unexpected result. " + (context->err ? std::string("Hiredis err is: ") + context->errstr : std::string());
-                default:
-                    redis_assert_unreachable();
-                    return "";
-            }
-        }
+
+
         Connection &operator=(const Connection &other) = delete;
         Connection(const Connection &other) = delete;
+        Connection(Connection&& other) : d(nullptr) {
+            std::swap(d, other.d);
+        }
         Connection(const ConnectionParam &connection_param);
         Connection(const std::string &host = ConnectionParam::get_default_connection_param().host,
                 unsigned int port = ConnectionParam::get_default_connection_param().port,
@@ -78,19 +61,20 @@ namespace Redis {
                 bool reconnect_on_failure = ConnectionParam::get_default_connection_param().reconnect_on_failure,
                 bool throw_on_error = ConnectionParam::get_default_connection_param().throw_on_error
         );
+        ~Connection();
+        bool is_available();
+        std::string get_error();
+        Error get_errno();
+        inline unsigned int get_version();
+        Id get_id();
 
-
-        ~Connection() {}
-        inline bool is_available() { return available; }
-        std::string get_error() { return get_error_str(get_errno(), context.get()); }
-        Error get_errno() { return err; }
-        inline bool has_prefix() { return !connection_param.prefix.empty(); }
         //Redis commands
 
-        inline unsigned int get_version() { return redis_version; }
-        bool fetch_version();
-
+        /***************************************************************/
+        /***************************************************************/
         /*********************** string commands ***********************/
+        /***************************************************************/
+        /***************************************************************/
 
         /* Append a value to a key */
         bool append(KeyRef key, KeyRef value, long long& result_length);
@@ -104,23 +88,12 @@ namespace Redis {
         /* Count set bits in a string */
         bool bitcount(KeyRef key, long long& result);
 
-        enum class BitOperation {
-            AND,
-            OR,
-            XOR,
-            NOT
-        };
-
         /* Perform bitwise operations between strings */
         bool bitop(BitOperation operation, KeyRef destkey, KeyVecRef keys, long long& size_of_dest);
 
         /* Perform bitwise operations between strings */
         bool bitop(BitOperation operation, KeyRef destkey, KeyVecRef keys);
 
-        enum class Bit {
-            ONE,
-            ZERO
-        };
         /* Find first bit set or clear in a subsstring defined by start and end*/
         bool bitpos(KeyRef key, Bit bit, unsigned int start, unsigned int end, long long& result);
 
@@ -142,9 +115,43 @@ namespace Redis {
         /* Get the value of a key */
         bool get(KeyRef key, Key& result);
 
-        /* Get the value of a key */
+        /* Get the value of a bunch of keys */
         bool get(KeyVecRef keys, KeyVec& vals);
-
+#if __cplusplus > 199711L
+        template <class PairIterator>
+        bool get(PairIterator begin, PairIterator end) {
+            std::vector<std::reference_wrapper<const Key>> keys;
+            PairIterator begin_copy = begin;
+            while(begin != end) {
+                keys.emplace_back(begin->first);
+                begin++;
+            }
+            if(!get(keys)) {
+                return false;
+            }
+            Key result;
+            size_t index = 0;
+            while(begin_copy != end) {
+                if (!fetch_get_result(begin_copy->second, index)) {
+                    return false;
+                }
+                begin_copy++;
+            }
+        }
+        template <class KeyIterator, class InsertIterator>
+        bool get(KeyIterator key_begin, KeyIterator key_end, InsertIterator ins_it) {
+            std::vector<std::reference_wrapper<const Key>> keys(key_begin, key_end);
+            if(!get(keys)) {
+                return false;
+            }
+            Key result;
+            size_t index = 0;
+            while(fetch_get_result(result, index)) {
+                ins_it = result;
+                index++;
+            }
+        }
+#endif
         /* Returns the bit value at offset in the string value stored at key */
         bool getbit(KeyRef key, long long offset, Bit& result);
 
@@ -178,44 +185,35 @@ namespace Redis {
         /* Increment the float value of a key by the given amount */
         bool incrbyfloat(KeyRef key, double increment);
 
-        /* Get the values of all the given keys */
-        bool mget(KeyVecRef keys, KeyVec& result);
+#if __cplusplus > 199711L
+        template <class KeyIterator, class ValueIterator>
+        bool set(KeyIterator key_begin, KeyIterator key_end, ValueIterator value_begin, ValueIterator value_end, SetType set_type = SetType::ALWAYS) {
+            std::vector<std::reference_wrapper<const Key>> keys(key_begin, key_end);
+            std::vector<std::reference_wrapper<const Key>> values(value_begin, value_end);
+            return set(keys, values, set_type);
+        }
 
-        /* Set multiple keys to multiple values */
-        bool mset(KeyVecRef keys, KeyVecRef values);
+        template <class PairIterator>
+        bool set(PairIterator begin, PairIterator end, SetType set_type = SetType::ALWAYS) {
+            std::vector<std::reference_wrapper<const Key>> keys, values;
+            while(begin != end) {
+                keys.emplace_back(begin->first);
+                values.emplace_back(begin->second);
+                begin++;
+            }
+            return set(keys, values, set_type);
+        }
 
-        /* Set multiple keys to multiple values, only if none of the keys exist */
-        bool msetnx(KeyVecRef keys, KeyVecRef values, bool& all_new_keys);
-
-        /* Set multiple keys to multiple values, only if none of the keys exist */
-        bool msetnx(KeyVecRef keys, KeyVecRef values);
-
-        /* Set the value and expiration in milliseconds of a key */
-        bool psetex(KeyRef key, KeyRef value, long long milliseconds);
-
-        enum class ExpireType {
-            NONE,
-            SEC,
-            MSEC
-        };
-
-        enum class SetType {
-            ALWAYS,
-            IF_EXIST,
-            IF_NOT_EXIST
-        };
+        bool set(const std::vector<std::reference_wrapper<const Key>>& keys, const std::vector<std::reference_wrapper<const Key>>values, SetType set_type = SetType::ALWAYS);
+#endif
+        bool set(KeyVecRef keys, KeyVecRef values, SetType set_type = SetType::ALWAYS);
+        bool set(const std::map<Key, Key>& key_value_map, SetType set_type = SetType::ALWAYS);
 
         /* Set the string value of a key */
-        bool set(KeyRef key, KeyRef value, long long expire = 0, ExpireType expire_type = ExpireType::NONE,  SetType set_type = SetType::ALWAYS);
-
-        /* Set the string value of a key */
-        bool set(KeyRef key, KeyRef value, long long expire, ExpireType expire_type,  SetType set_type, bool& was_set);
-
-        /* Set the string value of a key */
-        bool set(KeyVecRef keys, KeyVec& values, long long expire = 0, ExpireType expire_type = ExpireType::NONE,  SetType set_type = SetType::ALWAYS);
-
-        /* Set the string value of a key */
-        bool set(KeyVecRef keys, KeyVec& value, long long expire, ExpireType expire_type,  SetType set_type, bool& was_set);
+        bool set(const char* key, const char* value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
+        bool set(const char* key, const char* value,  SetType set_type, bool& was_set, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
+        bool set(KeyRef key, KeyRef value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
+        bool set(KeyRef key, KeyRef value,  SetType set_type, bool& was_set, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
 
         /* Sets or clears the bit at offset in the string value stored at key */
         bool set_bit(KeyRef key,long long offset, Bit value, Bit& original_bit);
@@ -242,9 +240,15 @@ namespace Redis {
         bool strlen(KeyRef key, long long& key_length);
 
 
+        /*******************************************************************/
+        /*******************************************************************/
         /*********************** connection commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+
+        //NOTE: Disable auth. It's dedicated to internals
         /* Authenticate to the server */
-        bool auth(KeyRef password);
+        //bool auth(KeyRef password);
 
         /* Echo the given string. Return message will contain a copy of message*/
         bool echo(KeyRef message, Key& return_message);
@@ -257,14 +261,20 @@ namespace Redis {
 
         /* Close the connection */
         bool quit();
+
+        /* Close the connection */
         bool disconnect();
 
+        //NOTE: We passed db in connection. Disable db switching
         /* Change the selected database for the current connection */
-        bool select(long long db_num);
-        bool switch_db(long long db_num);
+        //bool select(long long db_num);
 
+        /*******************************************************************/
+        /*******************************************************************/
+        /************************* server commands *************************/
+        /*******************************************************************/
+        /*******************************************************************/
 
-        /*********************** server commands ***********************/
         /* Asynchronously rewrite the append-only file */
         bool bgrewriteaof();
 
@@ -341,7 +351,12 @@ namespace Redis {
         bool time(long long& seconds, long long& microseconds);
 
 
-        /*********************** list commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /************************** list commands **************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Remove and get the first element in a list, or block until one is available */
         bool blpop(KeyVecRef keys, long long timeout, Key& chosen_key, Key& value);
 
@@ -356,11 +371,6 @@ namespace Redis {
 
         /* Get an element from a list by its index */
         bool lindex(KeyRef key, long long index);
-
-        enum class ListInsertType {
-            AFTER,
-            BEFORE
-        };
 
         /* Insert an element before or after another element in a list */
         bool linsert(KeyRef key, ListInsertType insert_type, KeyRef pivot, KeyRef value);
@@ -420,7 +430,12 @@ namespace Redis {
 //        bool rpushx(KeyRef key, VAL value);
 
 
-        /*********************** generic commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /************************ generic commands *************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Delete a key */
 //        bool del(KeyVecRef keys);
 
@@ -482,10 +497,15 @@ namespace Redis {
 //        bool type(KeyRef key);
 
         /* Incrementally iterate the keys space */
-//        bool scan(VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+        bool scan(unsigned long long& cursor, KeyVec& result_keys, KeyRef pattern = "*", long count = default_scan_count);
 
 
+        /*********************************************************************/
+        /*********************************************************************/
         /*********************** transactions commands ***********************/
+        /*********************************************************************/
+        /*********************************************************************/
+
         /* Discard all commands issued after MULTI */
 //        bool discard();
 
@@ -502,7 +522,12 @@ namespace Redis {
 //        bool watch(KeyVecRef keys);
 
 
-        /*********************** scripting commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /*********************** scripting commands ************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Execute a Lua script server side */
 //        bool eval(VAL script, VAL numkeys, KeyVecRef keys, VAL arg [arg ...]);
 
@@ -522,7 +547,12 @@ namespace Redis {
 //        bool script load(VAL script);
 
 
-        /*********************** hash commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /************************** hash commands **************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Delete one or more hash fields */
 //        bool hdel(KeyRef key, VAL field [field ...]);
 
@@ -566,7 +596,12 @@ namespace Redis {
 //        bool hscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
-        /*********************** pubsub commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /************************* pubsub commands *************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Listen for messages published to channels matching the given patterns */
 //        bool psubscribe(VAL pattern [pattern ...]);
 
@@ -586,7 +621,12 @@ namespace Redis {
 //        bool unsubscribe( /* [channel [channel ...]] */);
 
 
-        /*********************** set commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+        /*************************** set commands **************************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Add one or more members to a set */
         bool sadd(KeyRef key, KeyRef member);
 
@@ -600,7 +640,7 @@ namespace Redis {
         bool sadd(KeyRef key, KeyVecRef members, long& num_of_added);
 
         /* Get the number of members in a set */
-//        bool scard(KeyRef key);
+        bool scard(KeyRef key, long long& result_size);
 
         /* Subtract multiple sets */
 //        bool sdiff(KeyVecRef keys);
@@ -618,7 +658,7 @@ namespace Redis {
 //        bool sismember(KeyRef key, VAL member);
 
         /* Get all the members in a set */
-//        bool smembers(KeyRef key);
+        bool smembers(KeyRef key, KeyVec& resul);
 
         /* Move a member from one set to another */
 //        bool smove(VAL source, VAL destination, VAL member);
@@ -642,7 +682,12 @@ namespace Redis {
 //        bool sscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
+        /*******************************************************************/
+        /*******************************************************************/
         /*********************** sorted_set commands ***********************/
+        /*******************************************************************/
+        /*******************************************************************/
+
         /* Add one or more members to a sorted set, or update its score if it already exists */
 //        bool zadd(KeyRef key, VAL score member [score member ...]);
 
@@ -693,45 +738,13 @@ namespace Redis {
 
         /* Incrementally iterate sorted sets elements and associated scores */
 //        bool zscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
-
-
     private:
-        ConnectionParam connection_param;
-        bool available;
-        bool used;
-        std::unique_ptr<redisContext> context;
-        std::hash<std::string> hash_fn;
-        unsigned int redis_version;
-        Error err;
+        //Pimpl
+        class Implementation;
+        Implementation* d;
 
-        typedef std::unique_ptr<redisReply> Reply;
-
-        bool reconnect();
-        std::string add_prefix_to_key(const std::string &key);
-        inline void done() { used = false; }
-        inline void set_used() { used = true; }
-        inline bool is_used() { return used; }
-        void update_param(const ConnectionParam& new_param);
-        bool run_command(Reply& reply, const char* format, va_list ap);
-        bool run_command(Reply& reply, const std::vector<const char*>& commands, const std::vector<size_t>& sizes);
-        inline bool run_command(const std::vector<const char*>& commands, const std::vector<size_t>& sizes) {
-            Reply reply;
-            return run_command(reply, commands, sizes);
-        }
-        inline bool run_command(Reply& reply, const char* format, ...) {
-            va_list ap;
-            va_start(ap,format);
-            bool ret = run_command(reply, format,ap);
-            va_end(ap);
-            return ret;
-        }
-        inline bool run_command(const char* format, ...) {
-            Reply reply;
-            va_list ap;
-            va_start(ap,format);
-            bool ret = run_command(reply, format,ap);
-            va_end(ap);
-            return ret;
-        }
+        //Only methods used by template public functions
+        bool fetch_get_result(Key& result, size_t index);
+        bool get(const std::vector<std::reference_wrapper<const Key>>& keys);
     };
 }

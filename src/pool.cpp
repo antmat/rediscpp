@@ -1,32 +1,56 @@
 #include "redis.hpp"
 #include <thread>
+#include <unordered_map>
 
 namespace Redis {
+
+    class Pool::Impl {
+    public:
+        static constexpr size_t bucket_count = 100;
+        Impl() :
+                instances(bucket_count),
+                locks(bucket_count) {
+        }
+        struct ConnectionParamHasher {
+            unsigned long operator()(const ConnectionParam& c_param) const {
+                return c_param.get_hash();
+            }
+        };
+        typedef std::pair<Connection, bool> ConnectionWithUsage;
+        typedef std::vector<ConnectionWithUsage> ConnectionVector;
+        typedef std::unordered_map<ConnectionParam,  ConnectionVector, ConnectionParamHasher> ConnectionVectorMap;
+        std::vector<ConnectionVectorMap> instances;
+        std::vector<std::mutex> locks;
+    };
+
+    //Should be thread safe in c++11 standart
+    Pool& Pool::instance() {
+        static Pool inst;
+        return inst;
+    }
 
     size_t Pool::get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
         static std::hash<std::string> hash_fn;
         return hash_fn(key) % connection_params.size();
     }
+
     PoolWrapper Pool::get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
         static std::hash<std::string> hash_fn;
         return get(connection_params[hash_fn(key) % connection_params.size()]);
     }
 
     PoolWrapper Pool::get(const ConnectionParam &connection_param) {
-        static std::hash<std::string> hash_fn;
-        unsigned long hash = hash_fn(connection_param.host) + connection_param.port;
-        size_t bucket = hash % bucket_count;
-        std::lock_guard<std::mutex> guard(locks[bucket]);
-        std::vector<std::unique_ptr<Connection>> &vec = instances[bucket][hash];
+        size_t bucket = connection_param.get_hash() % d->bucket_count;
+        std::lock_guard<std::mutex> guard(d->locks[bucket]);
+        Impl::ConnectionVector &vec = d->instances[bucket][connection_param];
         for (size_t i = 0; vec.size() > i; i++) {
-            if (!vec[i]->is_used()) {
-                vec[i]->set_used();
-                vec[i]->update_param(connection_param);
-                return *vec[i];
+            if (!vec[i].second) {
+                vec[i].second = true;
+                return PoolWrapper(vec[i].first, vec[i].second);
             }
         }
-        vec.push_back(std::unique_ptr<Connection>(new Connection(connection_param)));
-        return PoolWrapper(*(vec.back()));
+        vec.emplace_back(connection_param, true);
+        return PoolWrapper(vec.back().first, vec.back().second);
     }
 
     PoolWrapper Pool::get(const std::string& host,

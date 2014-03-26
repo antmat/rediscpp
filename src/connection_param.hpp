@@ -16,6 +16,19 @@ namespace Redis {
         bool reconnect_on_failure;
         bool throw_on_error;
 
+        bool operator==(const ConnectionParam& other) const {
+            return
+                    host == other.host &&
+                    port == other.port &&
+                    password == other.password &&
+                    db_num == other.db_num &&
+                    prefix == other.prefix &&
+                    connect_timeout_ms == other.connect_timeout_ms &&
+                    operation_timeout_ms == other.operation_timeout_ms &&
+                    reconnect_on_failure == other.reconnect_on_failure &&
+                    throw_on_error == other.throw_on_error;
+        }
+
 
         //TODO: thread safety. This one is not thread safe. It cannot be used while other operations with library are in progress
         inline static void set_default_host(const std::string& default_host) {
@@ -74,5 +87,6 @@ namespace Redis {
         ConnectionParam(ConnectionParam &&other);
         ConnectionParam(const ConnectionParam &) = default;
         ConnectionParam &operator=(const ConnectionParam &) = default;
+        unsigned long long get_hash() const;
     };
 }
