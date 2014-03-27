@@ -3,7 +3,7 @@
 #include <map>
 #include <vector>
 #include <memory>
-#include <macro.hpp>
+#include "macro.hpp"
 #include "connection_param.hpp"
 
 namespace Redis {
@@ -13,9 +13,8 @@ namespace Redis {
         static constexpr size_t max_key_count_per_command = 50000;
         static constexpr long default_scan_count = 10; //defaulted by redis (2.8 at least)
         typedef std::string Key;
-        typedef const std::string& KeyRef;
         typedef std::vector<Key> KeyVec;
-        typedef const std::vector<Key>& KeyVecRef;
+        typedef std::vector<std::reference_wrapper<const Key>> KeyRefVec;
         typedef unsigned long long Id;
         friend class Pool;
         friend class PoolWrapper;
@@ -38,7 +37,7 @@ namespace Redis {
             TOO_LONG_COMMAND
         };
         enum class BitOperation { AND, OR, XOR, NOT };
-        enum class Bit { ONE, ZERO };
+        enum class Bit { ZERO, ONE };
         enum class ExpireType { NONE, SEC, MSEC };
         enum class SetType { ALWAYS, IF_EXIST, IF_NOT_EXIST };
         enum class ListInsertType { AFTER, BEFORE };
@@ -49,6 +48,10 @@ namespace Redis {
         Connection(const Connection &other) = delete;
         Connection(Connection&& other) : d(nullptr) {
             std::swap(d, other.d);
+        }
+        Connection& operator=(Connection&& other) {
+            std::swap(d, other.d);
+            return *this;
         }
         Connection(const ConnectionParam &connection_param);
         Connection(const std::string &host = ConnectionParam::get_default_connection_param().host,
@@ -65,7 +68,7 @@ namespace Redis {
         bool is_available();
         std::string get_error();
         Error get_errno();
-        inline unsigned int get_version();
+        unsigned int get_version();
         Id get_id();
 
         //Redis commands
@@ -77,50 +80,153 @@ namespace Redis {
         /***************************************************************/
 
         /* Append a value to a key */
-        bool append(KeyRef key, KeyRef value, long long& result_length);
+        bool append(const Key& key, const Key& value, long long& result_length);
 
         /* Append a value to a key */
-        bool append(KeyRef key, KeyRef value);
+        bool append(const Key& key, const Key& value);
 
         /* Count set bits in a string */
-        bool bitcount(KeyRef key, unsigned int start, unsigned int end, long long& result);
+        bool bitcount(const Key& key, unsigned int start, unsigned int end, long long& result);
 
         /* Count set bits in a string */
-        bool bitcount(KeyRef key, long long& result);
+        bool bitcount(const Key& key, long long& result);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, KeyRef destkey, KeyVecRef keys, long long& size_of_dest);
+        bool bitop(BitOperation operation, const Key& destkey, const KeyVec& keys, long long& size_of_dest);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, KeyRef destkey, KeyVecRef keys);
+        bool bitop(BitOperation operation, const Key& destkey, const KeyVec& keys);
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_and(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+            return bitop(BitOperation::AND, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_or(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+            return bitop(BitOperation::OR, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_xor(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+            return bitop(BitOperation::XOR, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        bool bit_not(const Key& destkey, const Key& key, long long& size_of_dest);
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_and(const Key& destkey, const KeyVec& keys) {
+            return bitop(BitOperation::AND, destkey, keys);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_or(const Key& destkey, const KeyVec& keys) {
+            return bitop(BitOperation::OR, destkey, keys);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        inline bool bit_xor(const Key& destkey, const KeyVec& keys) {
+            return bitop(BitOperation::XOR, destkey, keys);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        bool bit_not(const Key& destkey, const Key& key);
+
+#if __cplusplus > 199711L
+        /* Perform bitwise operations between strings */
+        bool bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys, long long& size_of_dest);
+
+        /* Perform bitwise operations between strings */
+        bool bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys);
+
+        /* Perform bitwise operations between strings */
+        template <class KeyIterator>
+        inline bool bitop(BitOperation operation, const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
+            KeyRefVec keys(begin, end);
+            return bitop(operation, destkey, keys, size_of_dest);
+        }
+
+        template <class KeyIterator>
+        inline bool bitop(BitOperation operation, const Key& destkey, KeyIterator begin, KeyIterator end) {
+            KeyRefVec keys(begin, end);
+            return bitop(operation, destkey, keys);
+        }
+
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_and(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::AND, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_or(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::OR, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_xor(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::XOR, destkey, keys, size_of_dest);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_and(const Key& destkey, KeyIterator begin, KeyIterator end) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::AND, destkey, keys);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_or(const Key& destkey, KeyIterator begin, KeyIterator end) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::OR, destkey, keys);
+        }
+
+        /* perform and operation between strings and store result in destkey */
+        template <class KeyIterator>
+        inline bool bit_xor(const Key& destkey, KeyIterator begin, KeyIterator end) {
+            KeyRefVec keys(begin, end);
+            return bitop(BitOperation::XOR, destkey, keys);
+        }
+
+#endif
+        /* Find first bit set or clear in a subsstring defined by start and end*/
+        bool bitpos(const Key& key, Bit bit, unsigned int start, long long& result);
 
         /* Find first bit set or clear in a subsstring defined by start and end*/
-        bool bitpos(KeyRef key, Bit bit, unsigned int start, unsigned int end, long long& result);
+        bool bitpos(const Key& key, Bit bit, unsigned int start, unsigned int end, long long& result);
 
         /* Find first bit set or clear in a string */
-        bool bitpos(KeyRef key, Bit bit, long long& result);
+        bool bitpos(const Key& key, Bit bit, long long& result);
 
         /* Decrement the integer value of a key by one */
-        bool decr(KeyRef key, long long& result_value);
+        bool decr(const Key& key, long long& result_value);
 
         /* Decrement the integer value of a key by one */
-        bool decr(KeyRef key);
+        bool decr(const Key& key);
 
         /* Decrement the integer value of a key by the given number */
-        bool decrby(KeyRef key, long long decrement, long long& result_value);
+        bool decrby(const Key& key, long long decrement, long long& result_value);
 
         /* Decrement the integer value of a key by the given number */
-        bool decrby(KeyRef key, long long decrement);
+        bool decrby(const Key& key, long long decrement);
 
         /* Get the value of a key */
-        bool get(KeyRef key, Key& result);
+        bool get(const Key& key, Key& result);
 
         /* Get the value of a bunch of keys */
-        bool get(KeyVecRef keys, KeyVec& vals);
+        bool get(const KeyVec& keys, KeyVec& vals);
 #if __cplusplus > 199711L
         template <class PairIterator>
         bool get(PairIterator begin, PairIterator end) {
-            std::vector<std::reference_wrapper<const Key>> keys;
+            KeyRefVec keys;
             PairIterator begin_copy = begin;
             while(begin != end) {
                 keys.emplace_back(begin->first);
@@ -140,7 +246,7 @@ namespace Redis {
         }
         template <class KeyIterator, class InsertIterator>
         bool get(KeyIterator key_begin, KeyIterator key_end, InsertIterator ins_it) {
-            std::vector<std::reference_wrapper<const Key>> keys(key_begin, key_end);
+            KeyRefVec keys(key_begin, key_end);
             if(!get(keys)) {
                 return false;
             }
@@ -153,49 +259,49 @@ namespace Redis {
         }
 #endif
         /* Returns the bit value at offset in the string value stored at key */
-        bool getbit(KeyRef key, long long offset, Bit& result);
+        bool getbit(const Key& key, long long offset, Bit& result);
 
         /* Get a substring of the string stored at a key */
-        bool getrange(KeyRef key, long long start, long long end, Key& result);
+        bool getrange(const Key& key, long long start, long long end, Key& result);
 
         /* Set the string value of a key and return its old value */
-        bool getset(KeyRef key, KeyRef value, Key& old_value);
+        bool getset(const Key& key, const Key& value, Key& old_value);
 
         /* Increment the integer value of a key by one */
-        bool incr(KeyRef key, long long& result_value);
+        bool incr(const Key& key, long long& result_value);
 
         /* Increment the integer value of a key by one */
-        bool incr(KeyRef key);
+        bool incr(const Key& key);
 
         /* Increment the integer value of a key by the given amount */
-        bool incrby(KeyRef key, long long increment, long long& result_value);
+        bool incrby(const Key& key, long long increment, long long& result_value);
 
         /* Increment the integer value of a key by the given amount */
-        bool incrby(KeyRef key, long long increment);
+        bool incrby(const Key& key, long long increment);
 
         /* Increment the float value of a key by the given amount */
-        bool incrbyfloat(KeyRef key, float increment, float& result_value);
+        bool incrbyfloat(const Key& key, float increment, float& result_value);
 
         /* Increment the float value of a key by the given amount */
-        bool incrbyfloat(KeyRef key, double increment, double& result_value);
+        bool incrbyfloat(const Key& key, double increment, double& result_value);
 
         /* Increment the float value of a key by the given amount */
-        bool incrbyfloat(KeyRef key, float increment);
+        bool incrbyfloat(const Key& key, float increment);
 
         /* Increment the float value of a key by the given amount */
-        bool incrbyfloat(KeyRef key, double increment);
+        bool incrbyfloat(const Key& key, double increment);
 
 #if __cplusplus > 199711L
         template <class KeyIterator, class ValueIterator>
         bool set(KeyIterator key_begin, KeyIterator key_end, ValueIterator value_begin, ValueIterator value_end, SetType set_type = SetType::ALWAYS) {
-            std::vector<std::reference_wrapper<const Key>> keys(key_begin, key_end);
-            std::vector<std::reference_wrapper<const Key>> values(value_begin, value_end);
+            KeyRefVec keys(key_begin, key_end);
+            KeyRefVec values(value_begin, value_end);
             return set(keys, values, set_type);
         }
 
         template <class PairIterator>
         bool set(PairIterator begin, PairIterator end, SetType set_type = SetType::ALWAYS) {
-            std::vector<std::reference_wrapper<const Key>> keys, values;
+            KeyRefVec keys, values;
             while(begin != end) {
                 keys.emplace_back(begin->first);
                 values.emplace_back(begin->second);
@@ -204,40 +310,40 @@ namespace Redis {
             return set(keys, values, set_type);
         }
 
-        bool set(const std::vector<std::reference_wrapper<const Key>>& keys, const std::vector<std::reference_wrapper<const Key>>values, SetType set_type = SetType::ALWAYS);
+        bool set(const KeyRefVec& keys, const KeyRefVec& values, SetType set_type = SetType::ALWAYS);
 #endif
-        bool set(KeyVecRef keys, KeyVecRef values, SetType set_type = SetType::ALWAYS);
+        bool set(const KeyVec& keys, const KeyVec& values, SetType set_type = SetType::ALWAYS);
         bool set(const std::map<Key, Key>& key_value_map, SetType set_type = SetType::ALWAYS);
 
         /* Set the string value of a key */
         bool set(const char* key, const char* value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
         bool set(const char* key, const char* value,  SetType set_type, bool& was_set, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
-        bool set(KeyRef key, KeyRef value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
-        bool set(KeyRef key, KeyRef value,  SetType set_type, bool& was_set, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
+        bool set(const Key& key, const Key& value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
+        bool set(const Key& key, const Key& value,  SetType set_type, bool& was_set, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
 
         /* Sets or clears the bit at offset in the string value stored at key */
-        bool set_bit(KeyRef key,long long offset, Bit value, Bit& original_bit);
+        bool set_bit(const Key& key,long long offset, Bit value, Bit& original_bit);
 
         /* Sets or clears the bit at offset in the string value stored at key */
-        bool set_bit(KeyRef key,long long offset, Bit value);
+        bool set_bit(const Key& key,long long offset, Bit value);
 
         /* Set the value and expiration of a key */
-        bool setex(KeyRef key, KeyRef value, long long seconds);
+        bool setex(const Key& key, const Key& value, long long seconds);
 
         /* Set the value of a key, only if the key does not exist */
-        bool setnx(KeyRef key, KeyRef value, bool& was_set);
+        bool setnx(const Key& key, const Key& value, bool& was_set);
 
         /* Set the value of a key, only if the key does not exist */
-        bool setnx(KeyRef key, KeyRef value);
+        bool setnx(const Key& key, const Key& value);
 
         /* Overwrite part of a string at key starting at the specified offset */
-        bool setrange(KeyRef key,long long offset, KeyRef value, long long& result_length);
+        bool setrange(const Key& key,long long offset, const Key& value, long long& result_length);
 
         /* Overwrite part of a string at key starting at the specified offset */
-        bool setrange(KeyRef key,long long offset, KeyRef value);
+        bool setrange(const Key& key,long long offset, const Key& value);
 
         /* Get the length of the value stored in a key */
-        bool strlen(KeyRef key, long long& key_length);
+        bool strlen(const Key& key, long long& key_length);
 
 
         /*******************************************************************/
@@ -248,13 +354,13 @@ namespace Redis {
 
         //NOTE: Disable auth. It's dedicated to internals
         /* Authenticate to the server */
-        //bool auth(KeyRef password);
+        //bool auth(const Key& password);
 
         /* Echo the given string. Return message will contain a copy of message*/
-        bool echo(KeyRef message, Key& return_message);
+        bool echo(const Key& message, Key& return_message);
 
         /* Echo the given string. In fact does nothing. Just for a full interface. */
-        bool echo(KeyRef message);
+        bool echo(const Key& message);
 
         /* Ping the server */
         bool ping();
@@ -282,7 +388,7 @@ namespace Redis {
         bool bgsave();
 
         /* Kill the connection of a client */
-        bool client_kill(KeyRef ip_and_port);
+        bool client_kill(const Key& ip_and_port);
 
         /* Get the list of client connections */
         //bool client_list(); //TODO : implement
@@ -297,13 +403,13 @@ namespace Redis {
         //bool client setname(VAL connection-name); //TODO : implement
 
         /* Get the value of a configuration parameter */
-        bool config_get(KeyRef parameter, Key& result);
+        bool config_get(const Key& parameter, Key& result);
 
         /* Rewrite the configuration file with the in memory configuration */
         bool config_rewrite();
 
         /* Set a configuration parameter to the given value */
-        bool config_set(KeyRef parameter, KeyRef value);
+        bool config_set(const Key& parameter, const Key& value);
 
         /* Reset the stats returned by INFO */
         bool config_resetstat();
@@ -312,7 +418,7 @@ namespace Redis {
         bool dbsize(long long* result);
 
         /* Get debugging information about a key */
-        bool debug_object(KeyRef key, Key& info);
+        bool debug_object(const Key& key, Key& info);
 
         /* Make the server crash */
         bool debug_segfault();
@@ -324,7 +430,7 @@ namespace Redis {
         bool flushdb();
 
         /* Get information and statistics about the server */
-        bool info(KeyRef section, Key& info_data);
+        bool info(const Key& section, Key& info_data);
 
         /* Get information and statistics about the server */
         bool info(Key& info_data);
@@ -339,7 +445,7 @@ namespace Redis {
         bool shutdown(bool save = true);
 
         /* Make the server a slave of another instance*/
-        bool slaveof(KeyRef host, unsigned int port);
+        bool slaveof(const Key& host, unsigned int port);
 
         /* Promote server as master */
         bool make_master();
@@ -358,76 +464,76 @@ namespace Redis {
         /*******************************************************************/
 
         /* Remove and get the first element in a list, or block until one is available */
-        bool blpop(KeyVecRef keys, long long timeout, Key& chosen_key, Key& value);
+        bool blpop(const KeyVec& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Remove and get the last element in a list, or block until one is available */
-        bool brpop(KeyVecRef keys, long long timeout, Key& chosen_key, Key& value);
+        bool brpop(const KeyVec& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Pop a value from a list, push it to another list and return it; or block until one is available */
-        bool brpoplpush(KeyRef source, KeyRef destination, long long timeout, Key& result);
+        bool brpoplpush(const Key& source, const Key& destination, long long timeout, Key& result);
 
         /* Pop a value from a list, push it to another list and return it; or block until one is available */
-        bool brpoplpush(KeyRef source, KeyRef destination, long long timeout);
+        bool brpoplpush(const Key& source, const Key& destination, long long timeout);
 
         /* Get an element from a list by its index */
-        bool lindex(KeyRef key, long long index);
+        bool lindex(const Key& key, long long index);
 
         /* Insert an element before or after another element in a list */
-        bool linsert(KeyRef key, ListInsertType insert_type, KeyRef pivot, KeyRef value);
+        bool linsert(const Key& key, ListInsertType insert_type, const Key& pivot, const Key& value);
 
         /* Insert an element before or after another element in a list */
-        bool linsert(KeyRef key, ListInsertType insert_type, KeyRef pivot, KeyRef value, long long& list_size);
+        bool linsert(const Key& key, ListInsertType insert_type, const Key& pivot, const Key& value, long long& list_size);
 
         /* Get the length of a list */
-        bool llen(KeyRef key, long long& length);
+        bool llen(const Key& key, long long& length);
 
         /* Remove and get the first element in a list */
-        bool lpop(KeyRef key, Key& value);
+        bool lpop(const Key& key, Key& value);
 
         /* Remove and get the first element in a list */
-        bool lpop(KeyRef key);
+        bool lpop(const Key& key);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(KeyRef key, KeyRef value, long long& list_length);
+        bool lpush(const Key& key, const Key& value, long long& list_length);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(KeyRef key, KeyRef value);
+        bool lpush(const Key& key, const Key& value);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(KeyRef key, KeyVecRef values, long long& list_length);
+        bool lpush(const Key& key, const KeyVec& values, long long& list_length);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(KeyRef key, KeyVecRef values);
+        bool lpush(const Key& key, const KeyVec& values);
 
         /* Prepend a value to a list, only if the list exists */
-        bool lpushx(KeyRef key, KeyRef value, long long& list_length);
+        bool lpushx(const Key& key, const Key& value, long long& list_length);
 
         /* Prepend a value to a list, only if the list exists */
-        bool lpushx(KeyRef key, KeyRef value);
+        bool lpushx(const Key& key, const Key& value);
 
         /* Get a range of elements from a list */
-//        bool lrange(KeyRef key, VAL start, VAL stop);
+//        bool lrange(const Key& key, VAL start, VAL stop);
 
         /* Remove elements from a list */
-//        bool lrem(KeyRef key, VAL count, VAL value);
+//        bool lrem(const Key& key, VAL count, VAL value);
 
         /* Set the value of an element in a list by its index */
-//        bool lset(KeyRef key, VAL index, VAL value);
+//        bool lset(const Key& key, VAL index, VAL value);
 
         /* Trim a list to the specified range */
-//        bool ltrim(KeyRef key, VAL start, VAL stop);
+//        bool ltrim(const Key& key, VAL start, VAL stop);
 
         /* Remove and get the last element in a list */
-//        bool rpop(KeyRef key);
+//        bool rpop(const Key& key);
 
         /* Remove the last element in a list, append it to another list and return it */
 //        bool rpoplpush(VAL source, VAL destination);
 
         /* Append one or multiple values to a list */
-//        bool rpush(KeyRef key, VAL value [value ...]);
+//        bool rpush(const Key& key, VAL value [value ...]);
 
         /* Append a value to a list, only if the list exists */
-//        bool rpushx(KeyRef key, VAL value);
+//        bool rpushx(const Key& key, VAL value);
 
 
         /*******************************************************************/
@@ -437,67 +543,67 @@ namespace Redis {
         /*******************************************************************/
 
         /* Delete a key */
-//        bool del(KeyVecRef keys);
+//        bool del(const KeyVec& keys);
 
         /* Return a serialized version of the value stored at the specified key. */
-//        bool dump(KeyRef key);
+//        bool dump(const Key& key);
 
         /* Determine if a key exists */
-//        bool exists(KeyRef key);
+//        bool exists(const Key& key);
 
         /* Set a key's time to live in seconds */
-//        bool expire(KeyRef key, VAL seconds);
+//        bool expire(const Key& key, VAL seconds);
 
         /* Set the expiration for a key as a UNIX timestamp */
-//        bool expireat(KeyRef key, VAL timestamp);
+//        bool expireat(const Key& key, VAL timestamp);
 
         /* Find all keys matching the given pattern */
 //        bool keys(VAL pattern);
 
         /* Atomically transfer a key from a Redis instance to another one. */
-//        bool migrate(VAL host, VAL port, KeyRef key, VAL destination-db, VAL timeout, bool copy = false, bool replace = false);
+//        bool migrate(VAL host, VAL port, const Key& key, VAL destination-db, VAL timeout, bool copy = false, bool replace = false);
 
         /* Move a key to another database */
-//        bool move(KeyRef key, VAL db);
+//        bool move(const Key& key, VAL db);
 
         /* Inspect the internals of Redis objects */
 //        bool object(VAL subcommand /*, [arguments [arguments ...]] */);
 
         /* Remove the expiration from a key */
-//        bool persist(KeyRef key);
+//        bool persist(const Key& key);
 
         /* Set a key's time to live in milliseconds */
-//        bool pexpire(KeyRef key, VAL milliseconds);
+//        bool pexpire(const Key& key, VAL milliseconds);
 
         /* Set the expiration for a key as a UNIX timestamp specified in milliseconds */
-//        bool pexpireat(KeyRef key, VAL milliseconds-timestamp);
+//        bool pexpireat(const Key& key, VAL milliseconds-timestamp);
 
         /* Get the time to live for a key in milliseconds */
-//        bool pttl(KeyRef key);
+//        bool pttl(const Key& key);
 
         /* Return a random key from the keyspace */
 //        bool randomkey();
 
         /* Rename a key */
-//        bool rename(KeyRef key, VAL newkey);
+//        bool rename(const Key& key, VAL newkey);
 
         /* Rename a key, only if the new key does not exist */
-//        bool renamenx(KeyRef key, VAL newkey);
+//        bool renamenx(const Key& key, VAL newkey);
 
         /* Create a key using the provided serialized value, previously obtained using DUMP. */
-//        bool restore(KeyRef key, VAL ttl, VAL serialized-value);
+//        bool restore(const Key& key, VAL ttl, VAL serialized-value);
 
         /* Sort the elements in a list, set or sorted set */
-//        bool sort(KeyRef key /*, [BY pattern] */ /*, [LIMIT offset count] */ /*, [GET pattern [GET pattern ...]] */ /*, [ASC|DESC] */, bool alpha = false /*, [STORE destination] */);
+//        bool sort(const Key& key /*, [BY pattern] */ /*, [LIMIT offset count] */ /*, [GET pattern [GET pattern ...]] */ /*, [ASC|DESC] */, bool alpha = false /*, [STORE destination] */);
 
         /* Get the time to live for a key */
-//        bool ttl(KeyRef key);
+//        bool ttl(const Key& key);
 
         /* Determine the type stored at key */
-//        bool type(KeyRef key);
+//        bool type(const Key& key);
 
         /* Incrementally iterate the keys space */
-        bool scan(unsigned long long& cursor, KeyVec& result_keys, KeyRef pattern = "*", long count = default_scan_count);
+        bool scan(unsigned long long& cursor, KeyVec& result_keys, const Key& pattern = "*", long count = default_scan_count);
 
 
         /*********************************************************************/
@@ -519,7 +625,7 @@ namespace Redis {
 //        bool unwatch();
 
         /* Watch the given keys to determine execution of the MULTI/EXEC block */
-//        bool watch(KeyVecRef keys);
+//        bool watch(const KeyVec& keys);
 
 
         /*******************************************************************/
@@ -529,10 +635,10 @@ namespace Redis {
         /*******************************************************************/
 
         /* Execute a Lua script server side */
-//        bool eval(VAL script, VAL numkeys, KeyVecRef keys, VAL arg [arg ...]);
+//        bool eval(VAL script, VAL numkeys, const KeyVec& keys, VAL arg [arg ...]);
 
         /* Execute a Lua script server side */
-//        bool evalsha(VAL sha1, VAL numkeys, KeyVecRef keys, VAL arg [arg ...]);
+//        bool evalsha(VAL sha1, VAL numkeys, const KeyVec& keys, VAL arg [arg ...]);
 
         /* Check existence of scripts in the script cache. */
 //        bool script exists(VAL script [script ...]);
@@ -554,46 +660,46 @@ namespace Redis {
         /*******************************************************************/
 
         /* Delete one or more hash fields */
-//        bool hdel(KeyRef key, VAL field [field ...]);
+//        bool hdel(const Key& key, VAL field [field ...]);
 
         /* Determine if a hash field exists */
-//        bool hexists(KeyRef key, VAL field);
+//        bool hexists(const Key& key, VAL field);
 
         /* Get the value of a hash field */
-//        bool hget(KeyRef key, VAL field);
+//        bool hget(const Key& key, VAL field);
 
         /* Get all the fields and values in a hash */
-//        bool hgetall(KeyRef key);
+//        bool hgetall(const Key& key);
 
         /* Increment the integer value of a hash field by the given number */
-//        bool hincrby(KeyRef key, VAL field, VAL increment);
+//        bool hincrby(const Key& key, VAL field, VAL increment);
 
         /* Increment the float value of a hash field by the given amount */
-//        bool hincrbyfloat(KeyRef key, VAL field, VAL increment);
+//        bool hincrbyfloat(const Key& key, VAL field, VAL increment);
 
         /* Get all the fields in a hash */
-//        bool hkeys(KeyRef key);
+//        bool hkeys(const Key& key);
 
         /* Get the number of fields in a hash */
-//        bool hlen(KeyRef key);
+//        bool hlen(const Key& key);
 
         /* Get the values of all the given hash fields */
-//        bool hmget(KeyRef key, VAL field [field ...]);
+//        bool hmget(const Key& key, VAL field [field ...]);
 
         /* Set multiple hash fields to multiple values */
-//        bool hmset(KeyRef key, VAL field value [field value ...]);
+//        bool hmset(const Key& key, VAL field value [field value ...]);
 
         /* Set the string value of a hash field */
-//        bool hset(KeyRef key, VAL field, VAL value);
+//        bool hset(const Key& key, VAL field, VAL value);
 
         /* Set the value of a hash field, only if the field does not exist */
-//        bool hsetnx(KeyRef key, VAL field, VAL value);
+//        bool hsetnx(const Key& key, VAL field, VAL value);
 
         /* Get all the values in a hash */
-//        bool hvals(KeyRef key);
+//        bool hvals(const Key& key);
 
         /* Incrementally iterate hash fields and associated values */
-//        bool hscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+//        bool hscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
         /*******************************************************************/
@@ -628,58 +734,58 @@ namespace Redis {
         /*******************************************************************/
 
         /* Add one or more members to a set */
-        bool sadd(KeyRef key, KeyRef member);
+        bool sadd(const Key& key, const Key& member);
 
         /* Add one or more members to a set */
-        bool sadd(KeyRef key, KeyVecRef members);
+        bool sadd(const Key& key, const KeyVec& members);
 
         /* Add one or more members to a set */
-        bool sadd(KeyRef key, KeyRef member, bool& was_added);
+        bool sadd(const Key& key, const Key& member, bool& was_added);
 
         /* Add one or more members to a set */
-        bool sadd(KeyRef key, KeyVecRef members, long& num_of_added);
+        bool sadd(const Key& key, const KeyVec& members, long& num_of_added);
 
         /* Get the number of members in a set */
-        bool scard(KeyRef key, long long& result_size);
+        bool scard(const Key& key, long long& result_size);
 
         /* Subtract multiple sets */
-//        bool sdiff(KeyVecRef keys);
+//        bool sdiff(const KeyVec& keys);
 
         /* Subtract multiple sets and store the resulting set in a key */
-//        bool sdiffstore(VAL destination, KeyVecRef keys);
+//        bool sdiffstore(VAL destination, const KeyVec& keys);
 
         /* Intersect multiple sets */
-        bool sinter(KeyVecRef keys, KeyVec& result);
+        bool sinter(const KeyVec& keys, KeyVec& result);
 
         /* Intersect multiple sets and store the resulting set in a key */
-//        bool sinterstore(VAL destination, KeyVecRef keys);
+//        bool sinterstore(VAL destination, const KeyVec& keys);
 
         /* Determine if a given value is a member of a set */
-//        bool sismember(KeyRef key, VAL member);
+//        bool sismember(const Key& key, VAL member);
 
         /* Get all the members in a set */
-        bool smembers(KeyRef key, KeyVec& resul);
+        bool smembers(const Key& key, KeyVec& resul);
 
         /* Move a member from one set to another */
 //        bool smove(VAL source, VAL destination, VAL member);
 
         /* Remove and return a random member from a set */
-//        bool spop(KeyRef key);
+//        bool spop(const Key& key);
 
         /* Get one or multiple random members from a set */
-//        bool srandmember(KeyRef key, bool count = false);
+//        bool srandmember(const Key& key, bool count = false);
 
         /* Remove one or more members from a set */
-//        bool srem(KeyRef key, VAL member [member ...]);
+//        bool srem(const Key& key, VAL member [member ...]);
 
         /* Add multiple sets */
-//        bool sunion(KeyVecRef keys);
+//        bool sunion(const KeyVec& keys);
 
         /* Add multiple sets and store the resulting set in a key */
-//        bool sunionstore(VAL destination, KeyVecRef keys);
+//        bool sunionstore(VAL destination, const KeyVec& keys);
 
         /* Incrementally iterate Set elements */
-//        bool sscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+//        bool sscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
 
 
         /*******************************************************************/
@@ -689,55 +795,55 @@ namespace Redis {
         /*******************************************************************/
 
         /* Add one or more members to a sorted set, or update its score if it already exists */
-//        bool zadd(KeyRef key, VAL score member [score member ...]);
+//        bool zadd(const Key& key, VAL score member [score member ...]);
 
         /* Get the number of members in a sorted set */
-//        bool zcard(KeyRef key);
+//        bool zcard(const Key& key);
 
         /* Count the members in a sorted set with scores within the given values */
-//        bool zcount(KeyRef key, VAL min, VAL max);
+//        bool zcount(const Key& key, VAL min, VAL max);
 
         /* Increment the score of a member in a sorted set */
-//        bool zincrby(KeyRef key, VAL increment, VAL member);
+//        bool zincrby(const Key& key, VAL increment, VAL member);
 
         /* Intersect multiple sorted sets and store the resulting sorted set in a new key */
-//        bool zinterstore(VAL destination, VAL numkeys, KeyVecRef keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+//        bool zinterstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
 
         /* Return a range of members in a sorted set, by index */
-//        bool zrange(KeyRef key, VAL start, VAL stop, bool withscores = false);
+//        bool zrange(const Key& key, VAL start, VAL stop, bool withscores = false);
 
         /* Return a range of members in a sorted set, by score */
-//        bool zrangebyscore(KeyRef key, VAL min, VAL max, bool withscores = false /*, [LIMIT offset count] */);
+//        bool zrangebyscore(const Key& key, VAL min, VAL max, bool withscores = false /*, [LIMIT offset count] */);
 
         /* Determine the index of a member in a sorted set */
-//        bool zrank(KeyRef key, VAL member);
+//        bool zrank(const Key& key, VAL member);
 
         /* Remove one or more members from a sorted set */
-//        bool zrem(KeyRef key, VAL member [member ...]);
+//        bool zrem(const Key& key, VAL member [member ...]);
 
         /* Remove all members in a sorted set within the given indexes */
-//        bool zremrangebyrank(KeyRef key, VAL start, VAL stop);
+//        bool zremrangebyrank(const Key& key, VAL start, VAL stop);
 
         /* Remove all members in a sorted set within the given scores */
-//        bool zremrangebyscore(KeyRef key, VAL min, VAL max);
+//        bool zremrangebyscore(const Key& key, VAL min, VAL max);
 
         /* Return a range of members in a sorted set, by index, with scores ordered from high to low */
-//        bool zrevrange(KeyRef key, VAL start, VAL stop, bool withscores = false);
+//        bool zrevrange(const Key& key, VAL start, VAL stop, bool withscores = false);
 
         /* Return a range of members in a sorted set, by score, with scores ordered from high to low */
-//        bool zrevrangebyscore(KeyRef key, VAL max, VAL min, bool withscores = false /*, [LIMIT offset count] */);
+//        bool zrevrangebyscore(const Key& key, VAL max, VAL min, bool withscores = false /*, [LIMIT offset count] */);
 
         /* Determine the index of a member in a sorted set, with scores ordered from high to low */
-//        bool zrevrank(KeyRef key, VAL member);
+//        bool zrevrank(const Key& key, VAL member);
 
         /* Get the score associated with the given member in a sorted set */
-//        bool zscore(KeyRef key, VAL member);
+//        bool zscore(const Key& key, VAL member);
 
         /* Add multiple sorted sets and store the resulting sorted set in a new key */
-//        bool zunionstore(VAL destination, VAL numkeys, KeyVecRef keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+//        bool zunionstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
 
         /* Incrementally iterate sorted sets elements and associated scores */
-//        bool zscan(KeyRef key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+//        bool zscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
     private:
         //Pimpl
         class Implementation;

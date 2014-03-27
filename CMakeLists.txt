@@ -6,6 +6,7 @@ if(NOT DEFINED REDISCPP_SDIR)
 endif(NOT DEFINED REDISCPP_SDIR)
 
 use_package_shared(hiredis hiredis.h)
+use_package_shared(cppunit hiredis.h)
 
 SET(REDISCPP_SOURCE
     "${REDISCPP_SDIR}/pool.cpp"
@@ -30,11 +31,13 @@ target_link_libraries(rediscpp
 )
 
 add_executable(test
-    "${REDISCPP_SDIR}/tests/tests.cpp"
+    "${REDISCPP_SDIR}/tests/connection_test_abstract.cpp"
+    "${REDISCPP_SDIR}/tests/connection_test_plain.cpp"
     "${REDISCPP_SDIR}/tests/run_tests.cpp"
 )
+set_target_properties(test PROPERTIES COMPILE_FLAGS "-Wno-effc++")
 
-target_link_libraries(test rediscpp)
+target_link_libraries(test cppunit rediscpp )
 
 install(TARGETS rediscpp DESTINATION lib)
 install(TARGETS rediscpp-static DESTINATION lib)
