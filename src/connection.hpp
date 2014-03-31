@@ -242,7 +242,10 @@ namespace Redis {
                     return false;
                 }
                 begin_copy++;
+                index++;
             }
+            redis_assert(index == keys.size());
+            return true;
         }
         template <class KeyIterator, class InsertIterator>
         bool get(KeyIterator key_begin, KeyIterator key_end, InsertIterator ins_it) {
@@ -254,8 +257,11 @@ namespace Redis {
             size_t index = 0;
             while(fetch_get_result(result, index)) {
                 ins_it = result;
+                ins_it++;
                 index++;
             }
+            redis_assert(index == keys.size());
+            return true;
         }
 #endif
         /* Returns the bit value at offset in the string value stored at key */
@@ -543,7 +549,10 @@ namespace Redis {
         /*******************************************************************/
 
         /* Delete a key */
-//        bool del(const KeyVec& keys);
+        bool del(const Key& key);
+        /* Delete a key */
+        bool del(const Key& key, bool& was_deleted);
+
 
         /* Return a serialized version of the value stored at the specified key. */
 //        bool dump(const Key& key);

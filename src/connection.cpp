@@ -62,7 +62,7 @@ namespace Redis {
         }
 
         template<class Keys>
-        void append_c_strings_with_prefixes_and_sizes(Keys keys, KeyVec& prefixed_keys, std::vector<const char*>& c_strs, std::vector<size_t>& sizes) {
+        void append_c_strings_with_prefixes_and_sizes(const Keys& keys, KeyVec& prefixed_keys, std::vector<const char*>& c_strs, std::vector<size_t>& sizes) {
             redis_assert(c_strs.size() == sizes.size());
             redis_assert(prefixed_keys.empty());
             size_t initial_size = c_strs.size();
@@ -717,8 +717,8 @@ namespace Redis {
     }
 
     bool Connection::get(const std::vector<std::reference_wrapper<const Key>>& keys) {
-        std::vector<size_t> sizes(keys.size()+1);
-        std::vector<const char*> command_parts_c_strings(keys.size()+1);
+        std::vector<size_t> sizes(1);
+        std::vector<const char*> command_parts_c_strings(1);
         command_parts_c_strings[0] = "MGET";
         sizes[0] = 4;
         KeyVec prefixed_keys;
@@ -739,8 +739,8 @@ namespace Redis {
     /* Get the value of multiple keys */
     bool Connection::get(const KeyVec& keys, Connection::KeyVec& result) {
         size_t sz = keys.size();
-        std::vector<size_t> sizes(sz+1);
-        std::vector<const char*> command_parts_c_strings(sz+1);
+        std::vector<size_t> sizes(1);
+        std::vector<const char*> command_parts_c_strings(1);
         command_parts_c_strings[0] = "MGET";
         sizes[0] = 4;
         KeyVec prefixed_keys;
@@ -1109,7 +1109,10 @@ namespace Redis {
 
     /*********************** generic commands ***********************/
     /* Delete a key */
-//        bool del(const KeyVec& keys);
+        bool Connection::del(const Key& key) {
+            const Key& prefixed_key = d->add_prefix_to_key(key);
+            return d->run_command("DEL %b", prefixed_key.c_str(), prefixed_key.size());
+        }
 
     /* Return a serialized version of the value stored at the specified key. */
 //        bool dump(const Key& key);
@@ -1363,13 +1366,14 @@ namespace Redis {
 
     /* Intersect multiple sets */
     bool Connection::sinter(const KeyVec& keys, KeyVec& result) {
-        std::vector<size_t> sizes(keys.size()+1);
-        std::vector<const char*> command_parts_c_strings(keys.size()+1);
+        std::vector<size_t> sizes(1);
+        std::vector<const char*> command_parts_c_strings(1);
         command_parts_c_strings[0] = "SINTER";
         sizes[0] = 6;
         KeyVec prefixed_keys;
         d->append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
         if(d->run_command(command_parts_c_strings, sizes)) {
+            result.clear();
             redis_assert(d->reply->type == REDIS_REPLY_ARRAY);
             for(size_t i=0; i < d->reply->elements; i++) {
                 redis_assert(d->reply->element[i]->type == REDIS_REPLY_STRING);

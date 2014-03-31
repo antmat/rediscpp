@@ -17,12 +17,20 @@ namespace Redis {
             }
         };
         typedef std::pair<Connection, bool> ConnectionWithUsage;
-        typedef std::vector<ConnectionWithUsage> ConnectionVector;
+        typedef std::vector<std::unique_ptr<ConnectionWithUsage>> ConnectionVector;
         typedef std::unordered_map<ConnectionParam,  ConnectionVector, ConnectionParamHasher> ConnectionVectorMap;
         std::vector<ConnectionVectorMap> instances;
         std::vector<std::mutex> locks;
     };
 
+    Pool::Pool() :
+        d(new Pool::Impl())
+    {}
+    Pool::~Pool() {
+        if(d != nullptr) {
+            delete d;
+        }
+    }
     //Should be thread safe in c++11 standart
     Pool& Pool::instance() {
         static Pool inst;
@@ -44,13 +52,13 @@ namespace Redis {
         std::lock_guard<std::mutex> guard(d->locks[bucket]);
         Impl::ConnectionVector &vec = d->instances[bucket][connection_param];
         for (size_t i = 0; vec.size() > i; i++) {
-            if (!vec[i].second) {
-                vec[i].second = true;
-                return PoolWrapper(vec[i].first, vec[i].second);
+            if (!vec[i]->second) {
+                vec[i]->second = true;
+                return PoolWrapper(vec[i]->first, vec[i]->second);
             }
         }
-        vec.emplace_back(connection_param, true);
-        return PoolWrapper(vec.back().first, vec.back().second);
+        vec.emplace_back(new Impl::ConnectionWithUsage(connection_param, true));
+        return PoolWrapper(vec.back()->first, vec.back()->second);
     }
 
     PoolWrapper Pool::get(const std::string& host,

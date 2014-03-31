@@ -28,6 +28,10 @@ namespace Redis {
         PoolWrapper get(const ConnectionParam &connection_param);
 
     private:
+        Pool();
+        ~Pool();
+        Pool(const Pool& other) = delete;
+        Pool& operator=(const Pool& other) = delete;
         class Impl;
         Impl* d;
     };

@@ -1,13 +1,16 @@
+#include <algorithm>
+#include <thread>
+#include <chrono>
 #include "connection_test_abstract.hpp"
 #define RUN(command) if(!command) {CPPUNIT_FAIL(connection.get_error());}
 #define VERSION_REQUIRED(version) if(connection.get_version() < version) {CPPUNIT_FAIL(std::string("Redis version:")+std::to_string(connection.get_version())+" is not enough for performing test");}
-
+#define CHECK_KEY(key, val) {std::string result_UNMEANING_SUFFIX; RUN(connection.get(key, result_UNMEANING_SUFFIX)); CPPUNIT_ASSERT_MESSAGE(result_UNMEANING_SUFFIX, result_UNMEANING_SUFFIX == val);}
 void ConnectionTestAbstract::setUp() {
     connection = std::move(get_connection());
 }
 void ConnectionTestAbstract::tearDown() {
 }
-void ConnectionTestAbstract::test_append(){
+void ConnectionTestAbstract::test_append() {
     std::string key = "test_append";
     RUN(connection.set(key, "v"));
     RUN(connection.append(key, "v"));
@@ -20,7 +23,7 @@ void ConnectionTestAbstract::test_append(){
     RUN(connection.get(key, val));
     CPPUNIT_ASSERT(val == "vvv");
 }
-void ConnectionTestAbstract::test_bitcount(){
+void ConnectionTestAbstract::test_bitcount() {
     VERSION_REQUIRED(20600);
     std::string key = "test_bitcount";
     long long bc;
@@ -41,7 +44,7 @@ void ConnectionTestAbstract::test_bitcount(){
     RUN(connection.bitcount(key, 1, 2, bc));
     CPPUNIT_ASSERT_MESSAGE(std::to_string(bc), bc == 0);
 }
-void ConnectionTestAbstract::test_bitop(){
+void ConnectionTestAbstract::test_bitop() {
     VERSION_REQUIRED(20600);
     std::string key = "test_bitop";
     std::string result;
@@ -197,7 +200,7 @@ void ConnectionTestAbstract::test_bitop(){
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\xff\xff\xff");
 }
-void ConnectionTestAbstract::test_bitpos(){
+void ConnectionTestAbstract::test_bitpos() {
     std::string val("\x00\x0f\x00\xf0", 4);
     std::string val_zero("\x00\x00\x00", 3);
     std::string val_one("\xff\xff\xff", 3);
@@ -220,41 +223,255 @@ void ConnectionTestAbstract::test_bitpos(){
     RUN(connection.bitpos("test_bitpos_key1", Redis::Connection::Bit::ONE, 1, pos));
     CPPUNIT_ASSERT(pos == 12);
 }
-void ConnectionTestAbstract::test_decr(){
+void ConnectionTestAbstract::test_decr() {
     std::string val("100500");
+    std::string invalid_val("UPCHK");
+    std::string key("test_decr");
+    std::string invalid_key("test_invalid_decr");
     std::string result;
     long long res_value;
-    RUN(connection.set("test_decr", val));
-    RUN(connection.decr("test_decr"));
-    RUN(connection.get("test_decr", result));
+    RUN(connection.set(key, val));
+    RUN(connection.set(invalid_key, invalid_val));
+    RUN(connection.decr(key));
+    RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "100499");
-    RUN(connection.decr("test_decr", res_value));
+    RUN(connection.decr(key, res_value));
     CPPUNIT_ASSERT(res_value == 100498);
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.decr(invalid_key)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.decr(invalid_key, res_value)));
+    CPPUNIT_ASSERT(res_value == 100498);
+    RUN(connection.decr(key, res_value));
+    CPPUNIT_ASSERT(res_value == 100497);
 }
-void ConnectionTestAbstract::test_decrby(){
+void ConnectionTestAbstract::test_decrby() {
     std::string val("100500");
+    std::string invalid_val("UPCHK");
+    std::string key("test_decr");
+    std::string invalid_key("test_invalid_decr");
     std::string result;
     long long res_value;
-    RUN(connection.set("test_decr", val));
-    RUN(connection.decrby("test_decr", 2));
-    RUN(connection.get("test_decr", result));
+    RUN(connection.set(key, val));
+    RUN(connection.set(invalid_key, invalid_val));
+    RUN(connection.decrby(key, 2));
+    RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "100498");
-    RUN(connection.decrby("test_decr", 2,res_value));
+    RUN(connection.decrby(key, 2, res_value));
     CPPUNIT_ASSERT(res_value == 100496);
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.decr(invalid_key)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.decr(invalid_key, res_value)));
+    CPPUNIT_ASSERT(res_value == 100496);
+    RUN(connection.decrby(key, 2, res_value));
+    CPPUNIT_ASSERT(res_value == 100494);
 }
-void ConnectionTestAbstract::test_get(){
+void ConnectionTestAbstract::test_get() {
+    std::vector<std::string> vals = {"UPCHK", "UP", "CHK"};
+    std::vector<std::string> keys = {"test_get1", "test_get2", "test_get3"};
+    std::map<std::string, std::string> kv_pairs = {{"test_get1",""}, {"test_get2",""}, {"test_get3",""}};
+    std::vector<std::string> ret_vals(1);
+    RUN(connection.set(keys, vals));
+    RUN(connection.get(keys[0], ret_vals[0]));
+    CPPUNIT_ASSERT(ret_vals[0] == "UPCHK");
+    RUN(connection.get(keys, ret_vals));
+    CPPUNIT_ASSERT(ret_vals.size() == 3);
+    CPPUNIT_ASSERT(ret_vals[0] == vals[0]);
+    CPPUNIT_ASSERT(ret_vals[1] == vals[1]);
+    CPPUNIT_ASSERT(ret_vals[2] == vals[2]);
+    ret_vals.clear();
+    RUN(connection.get(keys.begin(), keys.end(), std::insert_iterator<std::vector<std::string>>(ret_vals, ret_vals.begin())));
+    CPPUNIT_ASSERT(ret_vals.size() == 3);
+    CPPUNIT_ASSERT(ret_vals[0] == vals[0]);
+    CPPUNIT_ASSERT(ret_vals[1] == vals[1]);
+    CPPUNIT_ASSERT(ret_vals[2] == vals[2]);
+    RUN(connection.get(kv_pairs.begin(), kv_pairs.end()));
+    CPPUNIT_ASSERT(kv_pairs.size() == 3);
+    CPPUNIT_ASSERT(kv_pairs["test_get1"] == vals[0]);
+    CPPUNIT_ASSERT(kv_pairs["test_get2"] == vals[1]);
+    CPPUNIT_ASSERT(kv_pairs["test_get3"] == vals[2]);
 }
-void ConnectionTestAbstract::test_getbit(){
+void ConnectionTestAbstract::test_getbit() {
+    std::string key("test_get_bit");
+    RUN(connection.set(key, "\xff\x0f\xff"));
+    Redis::Connection::Bit bit;
+    RUN(connection.getbit(key, 3, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    RUN(connection.getbit(key, 8, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ZERO);
+    RUN(connection.getbit(key, 32, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ZERO);
 }
 void ConnectionTestAbstract::test_getrange(){
+    std::string key("test_getrange");
+    std::string result;
+    RUN(connection.set(key, "foobazbar"));
+    RUN(connection.getrange(key, 3, 5, result));
+    CPPUNIT_ASSERT_MESSAGE(result, result == "baz");
+    RUN(connection.getrange(key, -3, -1, result));
+    CPPUNIT_ASSERT_MESSAGE(result, result == "bar");
 }
 void ConnectionTestAbstract::test_getset(){
+    std::string key("test_getset");
+    std::string result;
+    RUN(connection.set(key, "foo"));
+    RUN(connection.getset(key, "bar", result));
+    CPPUNIT_ASSERT(result == "foo");
+    RUN(connection.get(key, result));
+    CPPUNIT_ASSERT(result == "bar");
 }
 void ConnectionTestAbstract::test_incr(){
+    std::string val("100500");
+    std::string invalid_val("UPCHK");
+    std::string key("test_incr");
+    std::string invalid_key("test_invalid_incr");
+    std::string result;
+    long long res_value;
+    RUN(connection.set(key, val));
+    RUN(connection.set(invalid_key, invalid_val));
+    RUN(connection.incr(key));
+    RUN(connection.get(key, result));
+    CPPUNIT_ASSERT(result == "100501");
+    RUN(connection.incr(key, res_value));
+    CPPUNIT_ASSERT(res_value == 100502);
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incr(invalid_key)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incr(invalid_key, res_value)));
+    CPPUNIT_ASSERT(res_value == 100502);
+    RUN(connection.incr(key, res_value));
+    CPPUNIT_ASSERT(res_value == 100503);
 }
 void ConnectionTestAbstract::test_incrby(){
+    std::string val("100500");
+    std::string invalid_val("UPCHK");
+    std::string key("test_incr");
+    std::string invalid_key("test_invalid_incr");
+    std::string result;
+    long long res_value;
+    RUN(connection.set(key, val));
+    RUN(connection.set(invalid_key, invalid_val));
+    RUN(connection.incrby(key, 2));
+    RUN(connection.get(key, result));
+    CPPUNIT_ASSERT(result == "100502");
+    RUN(connection.incrby(key, 2, res_value));
+    CPPUNIT_ASSERT(res_value == 100504);
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incr(invalid_key)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incr(invalid_key, res_value)));
+    CPPUNIT_ASSERT(res_value == 100504);
+    RUN(connection.incrby(key, 2, res_value));
+    CPPUNIT_ASSERT(res_value == 100506);
 }
 void ConnectionTestAbstract::test_incrbyfloat(){
+    std::string val("10.0");
+    std::string invalid_val("UPCHK");
+    std::string key("test_decr");
+    std::string invalid_key("test_invalid_decr");
+    std::string result;
+    double d_incr = 0.2;
+    float f_incr = static_cast<float>(d_incr);
+    double res_d_value;
+    float res_f_value;
+    RUN(connection.set(key, val));
+    RUN(connection.set(invalid_key, invalid_val));
+    RUN(connection.incrbyfloat(key, f_incr));
+    RUN(connection.incrbyfloat(key, d_incr));
+    RUN(connection.get(key, result));
+    CPPUNIT_ASSERT(fabs(std::stod(result) - 10.4) < 0.0000001);
+    RUN(connection.incrbyfloat(key, d_incr, res_d_value));
+    CPPUNIT_ASSERT(fabs(res_d_value - 10.6) < 0.0000001);
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incrbyfloat(invalid_key, d_incr)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incrbyfloat(invalid_key, d_incr, res_d_value)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incrbyfloat(invalid_key, f_incr)));
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.incrbyfloat(invalid_key, f_incr, res_f_value)));
+    RUN(connection.incrbyfloat(key, 2.0, res_d_value));
+    CPPUNIT_ASSERT(fabs(res_d_value - 12.6) < 0.0000001);
 }
+
 void ConnectionTestAbstract::test_set(){
+    bool was_set;
+    std::string key = "test_set";
+    connection.set(key, "test_val");
+    CHECK_KEY(key, "test_val");
+    connection.set(key, "test_val2", Redis::Connection::SetType::IF_EXIST, was_set, 1, Redis::Connection::ExpireType::SEC);
+    CPPUNIT_ASSERT(was_set == true);
+    CHECK_KEY(key, "test_val2");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+    CHECK_KEY(key, "");
+    connection.set(key, "test_val2", Redis::Connection::SetType::IF_EXIST, was_set);
+    CPPUNIT_ASSERT(was_set == false);
+    CHECK_KEY(key, "");
+    connection.set(key, "test_val3", Redis::Connection::SetType::IF_NOT_EXIST, was_set, 1000, Redis::Connection::ExpireType::MSEC);
+    CPPUNIT_ASSERT(was_set == true);
+    CHECK_KEY(key, "test_val3");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+    CHECK_KEY(key, "");
+
+    std::vector<std::string> keys = { "test_set1", "test_set2", "test_set3"};
+    std::vector<std::string> values = {"val", "val", "val"};
+    std::vector<std::reference_wrapper<std::string>> key_refs(keys.begin(), keys.end());
+    std::vector<std::reference_wrapper<std::string>> val_refs(values.begin(), values.end());
+    std::vector<std::pair<std::string, std::string>> kv_pairs;
+    std::map<std::string, std::string> kv_map;
+    for(size_t i=0; i<keys.size(); i++) {
+        kv_pairs.push_back(std::make_pair(keys[i], values[i]));
+        kv_map.insert(std::make_pair(keys[i], values[i]));
+    }
+    RUN(connection.set(keys, values, Redis::Connection::SetType::ALWAYS));
+    for(size_t i=0; i<keys.size(); i++) {
+        CHECK_KEY(keys[i], "val");
+        RUN(connection.del(keys[i]));
+        CHECK_KEY(keys[i], "");
+    }
+    CPPUNIT_ASSERT_ASSERTION_FAIL(RUN(connection.set(keys, values, Redis::Connection::SetType::IF_EXIST)));
+    RUN(connection.set(keys, values, Redis::Connection::SetType::IF_NOT_EXIST));
+    for(size_t i=0; i<keys.size(); i++) {
+        CHECK_KEY(keys[i], "val");
+        RUN(connection.del(keys[i]));
+        CHECK_KEY(keys[i], "");
+    }
+
+    RUN(connection.set(key_refs, val_refs, Redis::Connection::SetType::ALWAYS));
+    for(size_t i=0; i<keys.size(); i++) {
+        CHECK_KEY(keys[i], "val");
+        RUN(connection.del(keys[i]));
+        CHECK_KEY(keys[i], "");
+    }
+    /*RUN(connection.set(kv_pairs, Redis::Connection::SetType::ALWAYS));
+    for(size_t i=0; i<keys.size(); i++) {
+        CHECK_KEY(keys[i], "val");
+        RUN(connection.del(keys[i]));
+        CHECK_KEY(keys[i], "");
+    }*/
+    RUN(connection.set(kv_map, Redis::Connection::SetType::ALWAYS));
+    for(size_t i=0; i<keys.size(); i++) {
+        CHECK_KEY(keys[i], "val");
+        RUN(connection.del(keys[i]));
+        CHECK_KEY(keys[i], "");
+    }
+}
+
+
+
+
+void ConnectionTestAbstract::test_sinter(){
+    std::string key1("test_sinter1");
+    std::string key2("test_sinter2");
+    RUN(connection.sadd(key1, "1"));
+    RUN(connection.sadd(key1, "2"));
+    RUN(connection.sadd(key1, "3"));
+    RUN(connection.sadd(key2, "1"));
+    RUN(connection.sadd(key2, "2"));
+    RUN(connection.sadd(key2, "5"));
+    std::vector<std::string> keys;
+    keys.push_back(key1);
+    std::vector<std::string> result;
+    RUN(connection.sinter(keys, result));
+    CPPUNIT_ASSERT(result.size() == 3);
+    std::sort(result.begin(), result.end());
+    CPPUNIT_ASSERT(result[0] == "1");
+    CPPUNIT_ASSERT(result[1] == "2");
+    CPPUNIT_ASSERT(result[2] == "3");
+
+    keys.push_back(key2);
+    RUN(connection.sinter(keys, result));
+    CPPUNIT_ASSERT(result.size() == 2);
+    std::sort(result.begin(), result.end());
+    CPPUNIT_ASSERT(result[0] == "1");
+    CPPUNIT_ASSERT(result[1] == "2");
 }
