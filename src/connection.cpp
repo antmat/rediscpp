@@ -56,9 +56,6 @@ namespace Redis {
             id = ++id_counter;
             reconnect();
             fetch_version();
-            if (connection_param.db_num != 0) {
-                select(connection_param.db_num);
-            }
         }
 
         template<class Keys>
@@ -156,6 +153,12 @@ namespace Redis {
             else {
                 set_error_from_context(true);
                 available = (err == Error::NONE);
+            }
+            if(available && !connection_param.password.empty()) {
+                //TODO: AUTH
+            }
+            if(available && connection_param.db_num != 0) {
+                available = select(connection_param.db_num);
             }
             return available;
         }
@@ -342,7 +345,7 @@ namespace Redis {
         }
 
         bool select(long long db_num) {
-            return run_command("SELECT %d", db_num);
+            return run_command("SELECT %lli", db_num);
         }
 
         template <class KeyContainer>
@@ -617,23 +620,12 @@ namespace Redis {
     }
 
     /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys, long long& size_of_dest) {
+    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
         return d->bitop(operation, destkey, keys, size_of_dest);
     }
 
     /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys) {
-        long long res;
-        return bitop(operation, destkey, keys, res);
-    }
-
-    /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
-        return d->bitop(operation, destkey, keys, size_of_dest);
-    }
-
-    /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyVec& keys) {
+    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys) {
         long long res;
         return bitop(operation, destkey, keys, res);
     }
@@ -716,16 +708,6 @@ namespace Redis {
         return d->run_command("DECRBY %b %lli", prefixed_key.c_str(), prefixed_key.size(), decrement);
     }
 
-    bool Connection::get(const std::vector<std::reference_wrapper<const Key>>& keys) {
-        std::vector<size_t> sizes(1);
-        std::vector<const char*> command_parts_c_strings(1);
-        command_parts_c_strings[0] = "MGET";
-        sizes[0] = 4;
-        KeyVec prefixed_keys;
-        d->append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
-        return d->run_command(command_parts_c_strings, sizes);
-    }
-
     /* Get the value of a key */
     bool Connection::get(const Key& key, Connection::Key& result) {
         const Key& prefixed_key = d->add_prefix_to_key(key);
@@ -737,30 +719,33 @@ namespace Redis {
     }
 
     /* Get the value of multiple keys */
-    bool Connection::get(const KeyVec& keys, Connection::KeyVec& result) {
-        size_t sz = keys.size();
+    bool Connection::get(const KeyHolder& keys, ValueHolder&& result) {
         std::vector<size_t> sizes(1);
         std::vector<const char*> command_parts_c_strings(1);
         command_parts_c_strings[0] = "MGET";
         sizes[0] = 4;
         KeyVec prefixed_keys;
         d->append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
-        result.resize(sz);
         if(d->run_command(command_parts_c_strings, sizes)) {
-            size_t index=0;
-            bool res;
-            while(index < sz) {
-                 res = fetch_get_result(result[index], index);
-                 index++;
-                 redis_assert(res);
-                 if(!res) {
-                    d->set_error(Error::HIREDIS_UNKNOWN);
-                    return false;
-                 }
+            redis_assert(d->reply->elements == keys.size());
+            for(size_t index=0; index < d->reply->elements; index++) {
+                if(d->reply->element[index]->type == REDIS_REPLY_STRING) {
+                    result.push_back(d->reply->element[index]->str);
+                }
+                else if (d->reply->element[index]->type == REDIS_REPLY_NIL) {
+                    result.push_back("");
+                }
+                else {
+                    redis_assert_unreachable();
+                }
             }
             return true;
         }
         return false;
+    }
+
+    bool Connection::get(KVHolder&& vals) {
+        return get(vals.k, std::move(vals.v));
     }
 
     /* Returns the bit value at offset in the string value stored at key */
@@ -866,69 +851,77 @@ namespace Redis {
     }
 
 
-    bool Connection::set(const KeyRefVec& keys, const KeyRefVec& values, SetType set_type) {
+    bool Connection::set(const KeyHolder& keys, const KeyHolder& values, SetType set_type) {
         bool was_set;
         return d->set(keys, values, set_type, was_set);
     }
 
-    /* Set multiple keys to multiple values */
-    bool Connection::set(const std::map<Key, Key>& key_value_map, SetType set_type) {
-        return set(key_value_map.begin(), key_value_map.end(), set_type);
-    }
-
-    /* Set multiple keys to multiple values */
-    bool Connection::set(const KeyVec& keys, const KeyVec& values, SetType set_type) {
+    bool Connection::set(KKHolder&& kk, SetType set_type) {
         bool was_set;
-        return d->set(keys, values, set_type, was_set);
-    }
-
-    /* Set the string value of a key */
-    bool Connection::set(const Key& key, const Key& value, SetType set_type, long long expire, ExpireType expire_type) {
-        bool was_set;
-        return d->set(key.c_str(),key.size(), value.c_str(), value.size(), set_type, was_set, expire, expire_type);
-    }
-
-    bool Connection::set(const Key& key, const Key& value, SetType set_type, bool& was_set, long long expire, ExpireType expire_type) {
-        return d->set(key.c_str(),key.size(), value.c_str(), value.size(), set_type, was_set, expire, expire_type);
+        return d->set(kk.k1, kk.k2, set_type, was_set);
     }
     /* Set the string value of a key */
-    bool Connection::set(const char* key, const char* value, SetType set_type, bool& was_set, long long expire, ExpireType expire_type) {
-        return d->set(key, std::strlen(key), value, std::strlen(value), set_type, was_set, expire, expire_type);
-    }
-    bool Connection::set(const char* key, const char* value, SetType set_type, long long expire, ExpireType expire_type) {
+    bool Connection::set(const Key& key, const Key& value, SetType set_type, long long expire_val, ExpireType expire_type) {
         bool was_set;
-        return d->set(key, std::strlen(key), value, std::strlen(value), set_type, was_set, expire, expire_type);
+        return d->set(key.c_str(),key.size(), value.c_str(), value.size(), set_type, was_set, expire_val, expire_type);
     }
-//
-//    /* Sets or clears the bit at offset in the string value stored at key */
-//    bool Connection::setbit(const Key& key,long long offset, Bit value, Bit& original_bit);
-//
-//    /* Sets or clears the bit at offset in the string value stored at key */
-//    bool Connection::setbit(const Key& key,long long offset, Bit value);
-//
-//    /* Set the value and expiration of a key */
-//    bool Connection::setex(const Key& key, const Key& value, long long seconds);
-//
-//    /* Set the value of a key, only if the key does not exist */
-//    bool Connection::setnx(const Key& key, const Key& value, bool& was_set);
-//
-//    /* Set the value of a key, only if the key does not exist */
-//    bool Connection::setnx(const Key& key, const Key& value);
-//
-//    /* Overwrite part of a string at key starting at the specified offset */
-//    bool Connection::setrange(const Key& key,long long offset, const Key& value, long long& result_length);
-//
-//    /* Overwrite part of a string at key starting at the specified offset */
-//    bool Connection::setrange(const Key& key,long long offset, const Key& value);
-//
-//    /* Get the length of the value stored in a key */
-//    bool Connection::strlen(const Key& key, long long& key_length);
-//
-//
-//    /*********************** connection commands ***********************/
-//    /* Authenticate to the server */
-//    bool Connection::auth(const Key& password);
-//
+
+    bool Connection::set(const Key& key, const Key& value, SetType set_type, bool& was_set, long long expire_val, ExpireType expire_type) {
+        return d->set(key.c_str(),key.size(), value.c_str(), value.size(), set_type, was_set, expire_val, expire_type);
+    }
+    /* Set the string value of a key */
+    bool Connection::set(const char* key, const char* value, SetType set_type, bool& was_set, long long expire_val, ExpireType expire_type) {
+        return d->set(key, std::strlen(key), value, std::strlen(value), set_type, was_set, expire_val, expire_type);
+    }
+    bool Connection::set(const char* key, const char* value, SetType set_type, long long expire_val, ExpireType expire_type) {
+        bool was_set;
+        return d->set(key, std::strlen(key), value, std::strlen(value), set_type, was_set, expire_val, expire_type);
+    }
+
+    /* Sets or clears the bit at offset in the string value stored at key */
+    bool Connection::set_bit(const Key& key,long long offset, Bit value, Bit& original_bit) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if (d->run_command("SETBIT %b %lli %u", prefixed_key.c_str(), prefixed_key.size(), offset, value == Bit::ZERO ? 0 : 1)) {
+            original_bit = d->reply->integer == 0 ? Bit::ZERO : Bit::ONE;
+            return true;
+        }
+        return false;
+    }
+
+    /* Sets or clears the bit at offset in the string value stored at key */
+    bool Connection::set_bit(const Key& key,long long offset, Bit value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("SETBIT %b %lli %u", prefixed_key.c_str(), prefixed_key.size(), offset, value == Bit::ZERO ? 0 : 1);
+    }
+
+    /* Overwrite part of a string at key starting at the specified offset */
+    bool Connection::setrange(const Key& key,long long offset, const Key& value, long long& result_length) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if (d->run_command("SETRANGE %b %lli %b", prefixed_key.c_str(), prefixed_key.size(), offset, value.c_str(), value.size())) {
+            result_length = d->reply->integer;
+            return true;
+        }
+        return false;
+    }
+
+    /* Overwrite part of a string at key starting at the specified offset */
+    bool Connection::setrange(const Key& key,long long offset, const Key& value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("SETRANGE %b %lli %b", prefixed_key.c_str(), prefixed_key.size(), offset, value.c_str(), value.size());
+    }
+
+    /* Get the length of the value stored in a key */
+    bool Connection::strlen(const Key& key, long long& key_length) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if (d->run_command("STRLEN %b", prefixed_key.c_str(), prefixed_key.size())) {
+            key_length = d->reply->integer;
+            return true;
+        }
+        return false;
+    }
+
+
+    /*********************** connection commands ***********************/
 //    /* Echo the given string. Return message will contain a copy of message*/
 //    bool Connection::echo(const Key& message, Connection::Key& return_message);
 //
@@ -1121,10 +1114,59 @@ namespace Redis {
 //        bool exists(const Key& key);
 
     /* Set a key's time to live in seconds */
-//        bool expire(const Key& key, VAL seconds);
+    bool Connection::expire(const Key& key, long long expire_time, ExpireType expire_type) {
+        bool was_set;
+        return expire(key, expire_time, was_set, expire_type);
+    }
+    bool Connection::expire(const Key& key, long long expire_time, bool& was_set, ExpireType expire_type) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(expire_type == ExpireType::SEC) {
+            if(d->run_command("EXPIRE %b %lli", prefixed_key.c_str(), prefixed_key.size(), expire_time)) {
+                was_set = d->reply->integer != 0;
+                return true;
+            }
+            return false;
+        }
+        else if (expire_type == ExpireType::MSEC) {
+            if(d->run_command("PEXPIRE %b %lli", prefixed_key.c_str(), prefixed_key.size(), expire_time)) {
+                was_set = d->reply->integer != 0;
+                return true;
+            }
+            return false;
+        }
+        else {
+            redis_assert_unreachable();
+        }
+        return false;
+    }
 
     /* Set the expiration for a key as a UNIX timestamp */
-//        bool expireat(const Key& key, VAL timestamp);
+    bool Connection::expireat(const Key& key, long long expire_time, ExpireType expire_type) {
+        bool was_set;
+        return expireat(key, expire_time, was_set, expire_type);
+    }
+
+    bool Connection::expireat(const Key& key, long long expire_time, bool& was_set, ExpireType expire_type) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(expire_type == ExpireType::SEC) {
+            if(d->run_command("EXPIREAT %b %lli", prefixed_key.c_str(), prefixed_key.size(), expire_time)) {
+                was_set = d->reply->integer != 0;
+                return true;
+            }
+            return false;
+        }
+        else if (expire_type == ExpireType::MSEC) {
+            if(d->run_command("PEXPIRE %b %lli", prefixed_key.c_str(), prefixed_key.size(), expire_time)) {
+                was_set = d->reply->integer != 0;
+                return true;
+            }
+            return false;
+        }
+        else {
+            redis_assert_unreachable();
+        }
+        return false;
+    }
 
     /* Find all keys matching the given pattern */
 //        bool keys(VAL pattern);
@@ -1140,12 +1182,6 @@ namespace Redis {
 
     /* Remove the expiration from a key */
 //        bool persist(const Key& key);
-
-    /* Set a key's time to live in milliseconds */
-//        bool pexpire(const Key& key, VAL milliseconds);
-
-    /* Set the expiration for a key as a UNIX timestamp specified in milliseconds */
-//        bool pexpireat(const Key& key, VAL milliseconds-timestamp);
 
     /* Get the time to live for a key in milliseconds */
 //        bool pttl(const Key& key);
@@ -1166,13 +1202,47 @@ namespace Redis {
 //        bool sort(const Key& key /*, [BY pattern] */ /*, [LIMIT offset count] */ /*, [GET pattern [GET pattern ...]] */ /*, [ASC|DESC] */, bool alpha = false /*, [STORE destination] */);
 
     /* Get the time to live for a key */
-//        bool ttl(const Key& key);
+    bool Connection::ttl(const Key& key, long long& ttl_value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if (d->run_command("TTL %b", prefixed_key.c_str(), prefixed_key.size())) {
+            ttl_value = d->reply->integer;
+            return true;
+        }
+        return false;
+    }
 
     /* Determine the type stored at key */
-//        bool type(const Key& key);
+    bool Connection::type(const Key& key, KeyType& key_type) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if (d->run_command("TYPE %b", prefixed_key.c_str(), prefixed_key.size())) {
+            if(strcmp(d->reply->str, "none") == 0) {
+                key_type = KeyType::NONE;
+            }
+            else if(strcmp(d->reply->str, "string") == 0) {
+                key_type = KeyType::STRING;
+            }
+            else if(strcmp(d->reply->str, "list") == 0) {
+                key_type = KeyType::LIST;
+            }
+            else if(strcmp(d->reply->str, "set") == 0) {
+                key_type = KeyType::SET;
+            }
+            else if(strcmp(d->reply->str, "zset") == 0) {
+                key_type = KeyType::ZSET;
+            }
+            else if(strcmp(d->reply->str, "hash") == 0) {
+                key_type = KeyType::HASH;
+            }
+            else {
+                redis_assert_unreachable();
+            }
+            return true;
+        }
+        return false;
+    }
 
     /* Incrementally iterate the keys space */
-    bool Connection::scan(unsigned long long& cursor, KeyVec& result_keys, const Key& pattern, long count) {
+    bool Connection::scan(unsigned long long& cursor, ValueHolder&& result_keys, const Key& pattern, long count) {
         bool ret;
         const Key& prefixed_pattern = d->add_prefix_to_key(pattern);
         if(prefixed_pattern != "*") {
@@ -1190,7 +1260,6 @@ namespace Redis {
             ret = d->run_command("SCAN %lli", cursor);
         }
         if(ret) {
-            result_keys.clear();
             redis_assert(d->reply->elements == 2);
             redis_assert(d->reply->element[0]->type == REDIS_REPLY_STRING);
             redis_assert(d->reply->element[1]->type == REDIS_REPLY_ARRAY);
@@ -1198,7 +1267,7 @@ namespace Redis {
             for(size_t i=0; i < d->reply->element[1]->elements; i++) {
                 redis_assert(d->reply->element[1]->element[i]->type == REDIS_REPLY_STRING);
                 redis_assert(static_cast<size_t>(d->reply->element[1]->element[i]->len) >= prefixed_pattern.size());
-                result_keys.push_back(d->reply->element[1]->element[i]->str+prefixed_pattern.size());
+                result_keys.push_back(d->reply->element[1]->element[i]->str+prefixed_pattern.size()-1);
             }
             return true;
         }

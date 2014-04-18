@@ -5,8 +5,9 @@
 #include <memory>
 #include "macro.hpp"
 #include "connection_param.hpp"
-
+#include "holders.hpp"
 namespace Redis {
+
     class Connection {
     public:
         //Some empiric value after which library will reject commands
@@ -18,6 +19,7 @@ namespace Redis {
         typedef unsigned long long Id;
         friend class Pool;
         friend class PoolWrapper;
+
 
         enum class Error {
             NONE = 0,
@@ -36,6 +38,7 @@ namespace Redis {
             REPLY_ERR,
             TOO_LONG_COMMAND
         };
+        enum class KeyType {NONE, STRING, LIST, SET, ZSET, HASH};
         enum class BitOperation { AND, OR, XOR, NOT };
         enum class Bit { ZERO, ONE };
         enum class ExpireType { NONE, SEC, MSEC };
@@ -92,23 +95,23 @@ namespace Redis {
         bool bitcount(const Key& key, long long& result);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyVec& keys, long long& size_of_dest);
+        bool bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys, long long& size_of_dest);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyVec& keys);
+        bool bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys);
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_and(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+        inline bool bit_and(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::AND, destkey, keys, size_of_dest);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_or(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+        inline bool bit_or(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::OR, destkey, keys, size_of_dest);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_xor(const Key& destkey, const KeyVec& keys, long long& size_of_dest) {
+        inline bool bit_xor(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::XOR, destkey, keys, size_of_dest);
         }
 
@@ -116,87 +119,23 @@ namespace Redis {
         bool bit_not(const Key& destkey, const Key& key, long long& size_of_dest);
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_and(const Key& destkey, const KeyVec& keys) {
+        inline bool bit_and(const Key& destkey, const KeyHolder& keys) {
             return bitop(BitOperation::AND, destkey, keys);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_or(const Key& destkey, const KeyVec& keys) {
+        inline bool bit_or(const Key& destkey, const KeyHolder& keys) {
             return bitop(BitOperation::OR, destkey, keys);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_xor(const Key& destkey, const KeyVec& keys) {
+        inline bool bit_xor(const Key& destkey, const KeyHolder& keys) {
             return bitop(BitOperation::XOR, destkey, keys);
         }
 
         /* perform and operation between strings and store result in destkey */
         bool bit_not(const Key& destkey, const Key& key);
 
-#if __cplusplus > 199711L
-        /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys, long long& size_of_dest);
-
-        /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyRefVec& keys);
-
-        /* Perform bitwise operations between strings */
-        template <class KeyIterator>
-        inline bool bitop(BitOperation operation, const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
-            KeyRefVec keys(begin, end);
-            return bitop(operation, destkey, keys, size_of_dest);
-        }
-
-        template <class KeyIterator>
-        inline bool bitop(BitOperation operation, const Key& destkey, KeyIterator begin, KeyIterator end) {
-            KeyRefVec keys(begin, end);
-            return bitop(operation, destkey, keys);
-        }
-
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_and(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::AND, destkey, keys, size_of_dest);
-        }
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_or(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::OR, destkey, keys, size_of_dest);
-        }
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_xor(const Key& destkey, KeyIterator begin, KeyIterator end, long long& size_of_dest) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::XOR, destkey, keys, size_of_dest);
-        }
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_and(const Key& destkey, KeyIterator begin, KeyIterator end) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::AND, destkey, keys);
-        }
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_or(const Key& destkey, KeyIterator begin, KeyIterator end) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::OR, destkey, keys);
-        }
-
-        /* perform and operation between strings and store result in destkey */
-        template <class KeyIterator>
-        inline bool bit_xor(const Key& destkey, KeyIterator begin, KeyIterator end) {
-            KeyRefVec keys(begin, end);
-            return bitop(BitOperation::XOR, destkey, keys);
-        }
-
-#endif
         /* Find first bit set or clear in a subsstring defined by start and end*/
         bool bitpos(const Key& key, Bit bit, unsigned int start, long long& result);
 
@@ -222,48 +161,11 @@ namespace Redis {
         bool get(const Key& key, Key& result);
 
         /* Get the value of a bunch of keys */
-        bool get(const KeyVec& keys, KeyVec& vals);
-#if __cplusplus > 199711L
-        template <class PairIterator>
-        bool get(PairIterator begin, PairIterator end) {
-            KeyRefVec keys;
-            PairIterator begin_copy = begin;
-            while(begin != end) {
-                keys.emplace_back(begin->first);
-                begin++;
-            }
-            if(!get(keys)) {
-                return false;
-            }
-            Key result;
-            size_t index = 0;
-            while(begin_copy != end) {
-                if (!fetch_get_result(begin_copy->second, index)) {
-                    return false;
-                }
-                begin_copy++;
-                index++;
-            }
-            redis_assert(index == keys.size());
-            return true;
-        }
-        template <class KeyIterator, class InsertIterator>
-        bool get(KeyIterator key_begin, KeyIterator key_end, InsertIterator ins_it) {
-            KeyRefVec keys(key_begin, key_end);
-            if(!get(keys)) {
-                return false;
-            }
-            Key result;
-            size_t index = 0;
-            while(fetch_get_result(result, index)) {
-                ins_it = result;
-                ins_it++;
-                index++;
-            }
-            redis_assert(index == keys.size());
-            return true;
-        }
-#endif
+        bool get(const KeyHolder& keys, ValueHolder&& vals);
+
+        /* Get the value of a bunch of keys */
+        bool get(KVHolder&& vals);
+
         /* Returns the bit value at offset in the string value stored at key */
         bool getbit(const Key& key, long long offset, Bit& result);
 
@@ -297,29 +199,8 @@ namespace Redis {
         /* Increment the float value of a key by the given amount */
         bool incrbyfloat(const Key& key, double increment);
 
-#if __cplusplus > 199711L
-        template <class KeyIterator, class ValueIterator>
-        bool set(KeyIterator key_begin, KeyIterator key_end, ValueIterator value_begin, ValueIterator value_end, SetType set_type = SetType::ALWAYS) {
-            KeyRefVec keys(key_begin, key_end);
-            KeyRefVec values(value_begin, value_end);
-            return set(keys, values, set_type);
-        }
-
-        template <class PairIterator>
-        bool set(PairIterator begin, PairIterator end, SetType set_type = SetType::ALWAYS) {
-            KeyRefVec keys, values;
-            while(begin != end) {
-                keys.emplace_back(begin->first);
-                values.emplace_back(begin->second);
-                begin++;
-            }
-            return set(keys, values, set_type);
-        }
-
-        bool set(const KeyRefVec& keys, const KeyRefVec& values, SetType set_type = SetType::ALWAYS);
-#endif
-        bool set(const KeyVec& keys, const KeyVec& values, SetType set_type = SetType::ALWAYS);
-        bool set(const std::map<Key, Key>& key_value_map, SetType set_type = SetType::ALWAYS);
+        bool set(const KeyHolder& keys, const KeyHolder& values, SetType set_type = SetType::ALWAYS);
+        bool set(KKHolder&& kv, SetType set_type = SetType::ALWAYS);
 
         /* Set the string value of a key */
         bool set(const char* key, const char* value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
@@ -332,15 +213,6 @@ namespace Redis {
 
         /* Sets or clears the bit at offset in the string value stored at key */
         bool set_bit(const Key& key,long long offset, Bit value);
-
-        /* Set the value and expiration of a key */
-        bool setex(const Key& key, const Key& value, long long seconds);
-
-        /* Set the value of a key, only if the key does not exist */
-        bool setnx(const Key& key, const Key& value, bool& was_set);
-
-        /* Set the value of a key, only if the key does not exist */
-        bool setnx(const Key& key, const Key& value);
 
         /* Overwrite part of a string at key starting at the specified offset */
         bool setrange(const Key& key,long long offset, const Key& value, long long& result_length);
@@ -470,10 +342,10 @@ namespace Redis {
         /*******************************************************************/
 
         /* Remove and get the first element in a list, or block until one is available */
-        bool blpop(const KeyVec& keys, long long timeout, Key& chosen_key, Key& value);
+        bool blpop(const KeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Remove and get the last element in a list, or block until one is available */
-        bool brpop(const KeyVec& keys, long long timeout, Key& chosen_key, Key& value);
+        bool brpop(const KeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Pop a value from a list, push it to another list and return it; or block until one is available */
         bool brpoplpush(const Key& source, const Key& destination, long long timeout, Key& result);
@@ -506,10 +378,10 @@ namespace Redis {
         bool lpush(const Key& key, const Key& value);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(const Key& key, const KeyVec& values, long long& list_length);
+        bool lpush(const Key& key, const KeyHolder& values, long long& list_length);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(const Key& key, const KeyVec& values);
+        bool lpush(const Key& key, const KeyHolder& values);
 
         /* Prepend a value to a list, only if the list exists */
         bool lpushx(const Key& key, const Key& value, long long& list_length);
@@ -555,22 +427,26 @@ namespace Redis {
 
 
         /* Return a serialized version of the value stored at the specified key. */
-//        bool dump(const Key& key);
+        //bool dump(const Key& key, Key& data);
 
         /* Determine if a key exists */
 //        bool exists(const Key& key);
 
         /* Set a key's time to live in seconds */
-//        bool expire(const Key& key, VAL seconds);
+        bool expire(const Key& key, long long seconds, ExpireType expire_type = ExpireType::SEC);
+        bool expire(const Key& key, long long seconds, bool& was_set, ExpireType expire_type = ExpireType::SEC);
 
         /* Set the expiration for a key as a UNIX timestamp */
-//        bool expireat(const Key& key, VAL timestamp);
+        bool expireat(const Key& key, long long seconds, ExpireType expire_type = ExpireType::SEC);
+        bool expireat(const Key& key, long long seconds, bool& was_set, ExpireType expire_type = ExpireType::SEC);
 
         /* Find all keys matching the given pattern */
 //        bool keys(VAL pattern);
 
         /* Atomically transfer a key from a Redis instance to another one. */
-//        bool migrate(VAL host, VAL port, const Key& key, VAL destination-db, VAL timeout, bool copy = false, bool replace = false);
+        //bool migrate(const Key& host, unsigned int port, const Key& key, unsigned int destination_db, unsigned int timeout_ms, bool copy = false, bool replace = false);
+        //bool migrate(const Connection&, bool copy = false, bool replace = false);
+        //bool migrate(const Connection&, bool copy = false, bool replace = false);
 
         /* Move a key to another database */
 //        bool move(const Key& key, VAL db);
@@ -580,9 +456,6 @@ namespace Redis {
 
         /* Remove the expiration from a key */
 //        bool persist(const Key& key);
-
-        /* Set a key's time to live in milliseconds */
-//        bool pexpire(const Key& key, VAL milliseconds);
 
         /* Set the expiration for a key as a UNIX timestamp specified in milliseconds */
 //        bool pexpireat(const Key& key, VAL milliseconds-timestamp);
@@ -600,20 +473,19 @@ namespace Redis {
 //        bool renamenx(const Key& key, VAL newkey);
 
         /* Create a key using the provided serialized value, previously obtained using DUMP. */
-//        bool restore(const Key& key, VAL ttl, VAL serialized-value);
+        //bool restore(const Key& key, long long ttl_ms, const Key& data);
 
         /* Sort the elements in a list, set or sorted set */
 //        bool sort(const Key& key /*, [BY pattern] */ /*, [LIMIT offset count] */ /*, [GET pattern [GET pattern ...]] */ /*, [ASC|DESC] */, bool alpha = false /*, [STORE destination] */);
 
         /* Get the time to live for a key */
-//        bool ttl(const Key& key);
+        bool ttl(const Key& key, long long& ttl_val);
 
         /* Determine the type stored at key */
-//        bool type(const Key& key);
+        bool type(const Key& key, KeyType& type);
 
         /* Incrementally iterate the keys space */
-        bool scan(unsigned long long& cursor, KeyVec& result_keys, const Key& pattern = "*", long count = default_scan_count);
-
+        bool scan(unsigned long long& cursor, ValueHolder&& result_keys, const Key& pattern = "*", long count = default_scan_count);
 
         /*********************************************************************/
         /*********************************************************************/
@@ -860,6 +732,5 @@ namespace Redis {
 
         //Only methods used by template public functions
         bool fetch_get_result(Key& result, size_t index);
-        bool get(const std::vector<std::reference_wrapper<const Key>>& keys);
     };
 }

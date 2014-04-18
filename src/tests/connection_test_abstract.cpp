@@ -70,15 +70,6 @@ void ConnectionTestAbstract::test_bitop() {
     CPPUNIT_ASSERT(result == "\x11\x11\x11");
     CPPUNIT_ASSERT(result_len == 3);
 
-    RUN(connection.bitop(Redis::Connection::BitOperation::OR, key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x11\x11");
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::OR, key, keys.begin(), keys.end(), result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x11\x11");
-    CPPUNIT_ASSERT(result_len == 3);
-
     RUN(connection.bit_or(key, keys, result_len));
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\x11\x11\x11");
@@ -88,30 +79,12 @@ void ConnectionTestAbstract::test_bitop() {
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\x11\x11\x11");
 
-    RUN(connection.bit_or(key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x11\x11");
-
-    RUN(connection.bit_or(key, keys.begin(), keys.end(), result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x11\x11");
-    CPPUNIT_ASSERT(result_len == 3);
-
     /*** AND tests ***/
     RUN(connection.bitop(Redis::Connection::BitOperation::AND, key, keys));
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == zero_val);
 
     RUN(connection.bitop(Redis::Connection::BitOperation::AND, key, keys, result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == zero_val);
-    CPPUNIT_ASSERT(result_len == 3);
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::AND, key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == zero_val);
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::AND, key, keys.begin(), keys.end(), result_len));
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == zero_val);
     CPPUNIT_ASSERT(result_len == 3);
@@ -125,14 +98,6 @@ void ConnectionTestAbstract::test_bitop() {
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == zero_val);
 
-    RUN(connection.bit_and(key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == zero_val);
-
-    RUN(connection.bit_and(key, keys.begin(), keys.end(), result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == zero_val);
-    CPPUNIT_ASSERT(result_len == 3);
 
     /*** XOR tests ***/
     RUN(connection.bitop(Redis::Connection::BitOperation::XOR, key, keys));
@@ -140,15 +105,6 @@ void ConnectionTestAbstract::test_bitop() {
     CPPUNIT_ASSERT(result == "\x11\x10\x11");
 
     RUN(connection.bitop(Redis::Connection::BitOperation::XOR, key, keys, result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x10\x11");
-    CPPUNIT_ASSERT(result_len == 3);
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::XOR, key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x10\x11");
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::XOR, key, keys.begin(), keys.end(), result_len));
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\x11\x10\x11");
     CPPUNIT_ASSERT(result_len == 3);
@@ -162,15 +118,6 @@ void ConnectionTestAbstract::test_bitop() {
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\x11\x10\x11");
 
-    RUN(connection.bit_xor(key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x10\x11");
-
-    RUN(connection.bit_xor(key, keys.begin(), keys.end(), result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\x11\x10\x11");
-    CPPUNIT_ASSERT(result_len == 3);
-
     /*** NOT tests ***/
     keys.resize(1);
     RUN(connection.bitop(Redis::Connection::BitOperation::NOT, key, keys));
@@ -178,15 +125,6 @@ void ConnectionTestAbstract::test_bitop() {
     CPPUNIT_ASSERT(result == "\xff\xff\xff");
 
     RUN(connection.bitop(Redis::Connection::BitOperation::NOT, key, keys, result_len));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\xff\xff\xff");
-    CPPUNIT_ASSERT(result_len == 3);
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::NOT, key, keys.begin(), keys.end()));
-    RUN(connection.get(key, result));
-    CPPUNIT_ASSERT(result == "\xff\xff\xff");
-
-    RUN(connection.bitop(Redis::Connection::BitOperation::NOT, key, keys.begin(), keys.end(), result_len));
     RUN(connection.get(key, result));
     CPPUNIT_ASSERT(result == "\xff\xff\xff");
     CPPUNIT_ASSERT(result_len == 3);
@@ -277,12 +215,12 @@ void ConnectionTestAbstract::test_get() {
     CPPUNIT_ASSERT(ret_vals[1] == vals[1]);
     CPPUNIT_ASSERT(ret_vals[2] == vals[2]);
     ret_vals.clear();
-    RUN(connection.get(keys.begin(), keys.end(), std::insert_iterator<std::vector<std::string>>(ret_vals, ret_vals.begin())));
-    CPPUNIT_ASSERT(ret_vals.size() == 3);
-    CPPUNIT_ASSERT(ret_vals[0] == vals[0]);
-    CPPUNIT_ASSERT(ret_vals[1] == vals[1]);
-    CPPUNIT_ASSERT(ret_vals[2] == vals[2]);
-    RUN(connection.get(kv_pairs.begin(), kv_pairs.end()));
+    //RUN(connection.get(keys.begin(), keys.end(), std::insert_iterator<std::vector<std::string>>(ret_vals, ret_vals.begin())));
+    //CPPUNIT_ASSERT(ret_vals.size() == 3);
+    //CPPUNIT_ASSERT(ret_vals[0] == vals[0]);
+    //CPPUNIT_ASSERT(ret_vals[1] == vals[1]);
+    //CPPUNIT_ASSERT(ret_vals[2] == vals[2]);
+    RUN(connection.get(kv_pairs));
     CPPUNIT_ASSERT(kv_pairs.size() == 3);
     CPPUNIT_ASSERT(kv_pairs["test_get1"] == vals[0]);
     CPPUNIT_ASSERT(kv_pairs["test_get2"] == vals[1]);
@@ -404,8 +342,8 @@ void ConnectionTestAbstract::test_set(){
 
     std::vector<std::string> keys = { "test_set1", "test_set2", "test_set3"};
     std::vector<std::string> values = {"val", "val", "val"};
-    std::vector<std::reference_wrapper<std::string>> key_refs(keys.begin(), keys.end());
-    std::vector<std::reference_wrapper<std::string>> val_refs(values.begin(), values.end());
+    std::vector<std::reference_wrapper<const std::string>> key_refs(keys.begin(), keys.end());
+    std::vector<std::reference_wrapper<const std::string>> val_refs(values.begin(), values.end());
     std::vector<std::pair<std::string, std::string>> kv_pairs;
     std::map<std::string, std::string> kv_map;
     for(size_t i=0; i<keys.size(); i++) {
@@ -432,20 +370,29 @@ void ConnectionTestAbstract::test_set(){
         RUN(connection.del(keys[i]));
         CHECK_KEY(keys[i], "");
     }
-    /*RUN(connection.set(kv_pairs, Redis::Connection::SetType::ALWAYS));
+    RUN(connection.set(kv_pairs, Redis::Connection::SetType::ALWAYS));
     for(size_t i=0; i<keys.size(); i++) {
         CHECK_KEY(keys[i], "val");
         RUN(connection.del(keys[i]));
         CHECK_KEY(keys[i], "");
-    }*/
+    }
     RUN(connection.set(kv_map, Redis::Connection::SetType::ALWAYS));
     for(size_t i=0; i<keys.size(); i++) {
         CHECK_KEY(keys[i], "val");
         RUN(connection.del(keys[i]));
         CHECK_KEY(keys[i], "");
     }
-}
 
+}
+void ConnectionTestAbstract::test_set_bit() {
+
+}
+void ConnectionTestAbstract::test_setrange() {
+
+}
+void ConnectionTestAbstract::test_strlen() {
+
+}
 
 
 

@@ -30,6 +30,8 @@ target_link_libraries(rediscpp
     "${LIB_hiredis}"
 )
 
+#cppunit is broken in brew in mac os x
+if( NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 add_executable(test
     "${REDISCPP_SDIR}/tests/connection_test_abstract.cpp"
     "${REDISCPP_SDIR}/tests/connection_test_plain.cpp"
@@ -38,12 +40,14 @@ add_executable(test
 set_target_properties(test PROPERTIES COMPILE_FLAGS "-Wno-effc++")
 
 target_link_libraries(test cppunit rediscpp )
+endif()
 
 install(TARGETS rediscpp DESTINATION lib)
 install(TARGETS rediscpp-static DESTINATION lib)
 install(FILES
     "${REDISCPP_SDIR}/pool.hpp"
     "${REDISCPP_SDIR}/macro.hpp"
+    "${REDISCPP_SDIR}/holders.hpp"
     "${REDISCPP_SDIR}/redis.hpp"
     "${REDISCPP_SDIR}/connection.hpp"
     "${REDISCPP_SDIR}/pool_wrapper.hpp"
