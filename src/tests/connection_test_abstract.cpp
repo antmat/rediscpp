@@ -25,7 +25,7 @@ void ConnectionTestAbstract::test_append() {
     CPPUNIT_ASSERT(val == "vvv");
 }
 void ConnectionTestAbstract::test_bitcount() {
-    //VERSION_REQUIRED(20600);
+    VERSION_REQUIRED(20600);
     std::string key = "test_bitcount";
     long long bc;
     RUN(connection.set(key, "\xff\xff\xff"));
@@ -46,7 +46,7 @@ void ConnectionTestAbstract::test_bitcount() {
     CPPUNIT_ASSERT_MESSAGE(std::to_string(bc), bc == 0);
 }
 void ConnectionTestAbstract::test_bitop() {
-    //VERSION_REQUIRED(20600);
+    VERSION_REQUIRED(20600);
     std::string key = "test_bitop";
     std::string result;
     long long result_len;
@@ -409,30 +409,26 @@ void ConnectionTestAbstract::test_setrange() {
     RUN( connection.set(key, "test string one" ) );
     RUN( connection.setrange(key, 5, "STRING" )  );
     RUN( connection.get(key, result) );
-    std::cout << " OK: "<< result << "\n";
     CPPUNIT_ASSERT( result == "test STRING one" );
 
     RUN( connection.setrange(key, 5, "a different string", str_len )  );
     RUN( connection.get(key, result) );
-    CPPUNIT_ASSERT( result == "test a different string" );
+    CPPUNIT_ASSERT( result ==  "test a different string" );
     CPPUNIT_ASSERT( str_len == 23 );
 
-    //got error means test OK
-    RUN( connection.setrange(key, -1, "Should be an error" )  );
+    CPPUNIT_ASSERT_ASSERTION_FAIL( RUN( connection.setrange(key, -1, "Should be an error" ) ) );
 }
 
 void ConnectionTestAbstract::test_strlen() {
     std::string key("test_strlen");
+    std::string sample_str("The Quick Brown Fox Jumps Over Lazy Dog");
     long long str_len;
-    RUN( connection.set( key, "The Quick Brown Fox Jumps Over Lazy Dog" ) );
+    RUN( connection.set( key, sample_str ) );
     RUN( connection.strlen( key, str_len ) );
-    CPPUNIT_ASSERT( str_len == 39 );
+    CPPUNIT_ASSERT( str_len == sample_str.size() );
     RUN( connection.del(key) );
     RUN( connection.strlen(key, str_len) );
     CPPUNIT_ASSERT( str_len == 0 );
-    RUN( connection.set( key, "Chào các bạn" ) );
-    RUN( connection.strlen( key, str_len ) );
-    CPPUNIT_ASSERT( str_len == 16 ); // base is 14 and 2 characters with tone
 }
 
 void ConnectionTestAbstract::test_sinter(){
