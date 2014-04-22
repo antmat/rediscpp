@@ -425,10 +425,17 @@ void ConnectionTestAbstract::test_strlen() {
     long long str_len;
     RUN( connection.set( key, sample_str ) );
     RUN( connection.strlen( key, str_len ) );
-    CPPUNIT_ASSERT( str_len == sample_str.size() );
+    CPPUNIT_ASSERT( str_len - sample_str.size() == 0);
     RUN( connection.del(key) );
     RUN( connection.strlen(key, str_len) );
     CPPUNIT_ASSERT( str_len == 0 );
+
+}
+
+void ConnectionTestAbstract::test_sadd() {
+}
+
+void ConnectionTestAbstract::test_scard() {
 }
 
 void ConnectionTestAbstract::test_sinter(){
@@ -456,4 +463,7 @@ void ConnectionTestAbstract::test_sinter(){
     std::sort(result.begin(), result.end());
     CPPUNIT_ASSERT(result[0] == "1");
     CPPUNIT_ASSERT(result[1] == "2");
+}
+
+void ConnectionTestAbstract::test_smembers() {
 }
