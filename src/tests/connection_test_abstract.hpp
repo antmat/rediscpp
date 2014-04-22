@@ -58,6 +58,7 @@ protected:
     void test_sinter();
 
 
+
 private:
     Redis::Connection connection;
 };

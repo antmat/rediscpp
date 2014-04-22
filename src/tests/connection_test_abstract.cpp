@@ -10,6 +10,7 @@ void ConnectionTestAbstract::setUp() {
 }
 void ConnectionTestAbstract::tearDown() {
 }
+
 void ConnectionTestAbstract::test_append() {
     std::string key = "test_append";
     RUN(connection.set(key, "v"));
@@ -385,16 +386,50 @@ void ConnectionTestAbstract::test_set(){
 
 }
 void ConnectionTestAbstract::test_set_bit() {
-
+    std::string key("test_set_bit");
+    Redis::Connection::Bit bit;
+    Redis::Connection::Bit original_bit;
+    RUN(connection.set_bit(key, 32, Redis::Connection::Bit::ONE));
+    RUN(connection.getbit(key, 32, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ZERO));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ZERO);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ONE, original_bit ));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    CPPUNIT_ASSERT(original_bit == Redis::Connection::Bit::ZERO);
 }
+
 void ConnectionTestAbstract::test_setrange() {
+    std::string key("test_setrange");
+    std::string result;
+    long long str_len;
 
+    RUN( connection.set(key, "test string one" ) );
+    RUN( connection.setrange(key, 5, "STRING" )  );
+    RUN( connection.get(key, result) );
+    CPPUNIT_ASSERT( result == "test STRING one" );
+
+    RUN( connection.setrange(key, 5, "a different string", str_len )  );
+    RUN( connection.get(key, result) );
+    CPPUNIT_ASSERT( result ==  "test a different string" );
+    CPPUNIT_ASSERT( str_len == 23 );
+
+    CPPUNIT_ASSERT_ASSERTION_FAIL( RUN( connection.setrange(key, -1, "Should be an error" ) ) );
 }
+
 void ConnectionTestAbstract::test_strlen() {
-
+    std::string key("test_strlen");
+    std::string sample_str("The Quick Brown Fox Jumps Over Lazy Dog");
+    long long str_len;
+    RUN( connection.set( key, sample_str ) );
+    RUN( connection.strlen( key, str_len ) );
+    CPPUNIT_ASSERT( str_len == sample_str.size() );
+    RUN( connection.del(key) );
+    RUN( connection.strlen(key, str_len) );
+    CPPUNIT_ASSERT( str_len == 0 );
 }
-
-
 
 void ConnectionTestAbstract::test_sinter(){
     std::string key1("test_sinter1");
