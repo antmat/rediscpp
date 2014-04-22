@@ -10,6 +10,7 @@ void ConnectionTestAbstract::setUp() {
 }
 void ConnectionTestAbstract::tearDown() {
 }
+
 void ConnectionTestAbstract::test_append() {
     std::string key = "test_append";
     RUN(connection.set(key, "v"));
@@ -24,7 +25,7 @@ void ConnectionTestAbstract::test_append() {
     CPPUNIT_ASSERT(val == "vvv");
 }
 void ConnectionTestAbstract::test_bitcount() {
-    VERSION_REQUIRED(20600);
+    //VERSION_REQUIRED(20600);
     std::string key = "test_bitcount";
     long long bc;
     RUN(connection.set(key, "\xff\xff\xff"));
@@ -45,7 +46,7 @@ void ConnectionTestAbstract::test_bitcount() {
     CPPUNIT_ASSERT_MESSAGE(std::to_string(bc), bc == 0);
 }
 void ConnectionTestAbstract::test_bitop() {
-    VERSION_REQUIRED(20600);
+    //VERSION_REQUIRED(20600);
     std::string key = "test_bitop";
     std::string result;
     long long result_len;
@@ -385,16 +386,54 @@ void ConnectionTestAbstract::test_set(){
 
 }
 void ConnectionTestAbstract::test_set_bit() {
-
+    std::string key("test_set_bit");
+    Redis::Connection::Bit bit;
+    Redis::Connection::Bit original_bit;
+    RUN(connection.set_bit(key, 32, Redis::Connection::Bit::ONE));
+    RUN(connection.getbit(key, 32, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ZERO));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ZERO);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ONE, original_bit ));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    CPPUNIT_ASSERT(original_bit == Redis::Connection::Bit::ZERO);
 }
+
 void ConnectionTestAbstract::test_setrange() {
+    std::string key("test_setrange");
+    std::string result;
+    long long str_len;
 
+    RUN( connection.set(key, "test string one" ) );
+    RUN( connection.setrange(key, 5, "STRING" )  );
+    RUN( connection.get(key, result) );
+    std::cout << " OK: "<< result << "\n";
+    CPPUNIT_ASSERT( result == "test STRING one" );
+
+    RUN( connection.setrange(key, 5, "a different string", str_len )  );
+    RUN( connection.get(key, result) );
+    CPPUNIT_ASSERT( result == "test a different string" );
+    CPPUNIT_ASSERT( str_len == 23 );
+
+    //got error means test OK
+    RUN( connection.setrange(key, -1, "Should be an error" )  );
 }
+
 void ConnectionTestAbstract::test_strlen() {
-
+    std::string key("test_strlen");
+    long long str_len;
+    RUN( connection.set( key, "The Quick Brown Fox Jumps Over Lazy Dog" ) );
+    RUN( connection.strlen( key, str_len ) );
+    CPPUNIT_ASSERT( str_len == 39 );
+    RUN( connection.del(key) );
+    RUN( connection.strlen(key, str_len) );
+    CPPUNIT_ASSERT( str_len == 0 );
+    RUN( connection.set( key, "Chào các bạn" ) );
+    RUN( connection.strlen( key, str_len ) );
+    CPPUNIT_ASSERT( str_len == 16 ); // base is 14 and 2 characters with tone
 }
-
-
 
 void ConnectionTestAbstract::test_sinter(){
     std::string key1("test_sinter1");
