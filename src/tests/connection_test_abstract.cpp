@@ -4,6 +4,7 @@
 #include "connection_test_abstract.hpp"
 #define RUN(command) if(!command) {CPPUNIT_FAIL(connection.get_error());}
 #define VERSION_REQUIRED(version) if(connection.get_version() < version) {CPPUNIT_FAIL(std::string("Redis version:")+std::to_string(connection.get_version())+" is not enough for performing test");}
+//#define VERSION_REQUIRED(version) if(connection.get_version() < version) {CPPUNIT_TEST_SUITE_END();}
 #define CHECK_KEY(key, val) {std::string result_UNMEANING_SUFFIX; RUN(connection.get(key, result_UNMEANING_SUFFIX)); CPPUNIT_ASSERT_MESSAGE(result_UNMEANING_SUFFIX, result_UNMEANING_SUFFIX == val);}
 void ConnectionTestAbstract::setUp() {
     connection = std::move(get_connection());
@@ -140,6 +141,7 @@ void ConnectionTestAbstract::test_bitop() {
     CPPUNIT_ASSERT(result == "\xff\xff\xff");
 }
 void ConnectionTestAbstract::test_bitpos() {
+    VERSION_REQUIRED(20807);
     std::string val("\x00\x0f\x00\xf0", 4);
     std::string val_zero("\x00\x00\x00", 3);
     std::string val_one("\xff\xff\xff", 3);
@@ -297,6 +299,7 @@ void ConnectionTestAbstract::test_incrby(){
     CPPUNIT_ASSERT(res_value == 100506);
 }
 void ConnectionTestAbstract::test_incrbyfloat(){
+    VERSION_REQUIRED(20600);
     std::string val("10.0");
     std::string invalid_val("UPCHK");
     std::string key("test_decr");
@@ -425,17 +428,55 @@ void ConnectionTestAbstract::test_strlen() {
     long long str_len;
     RUN( connection.set( key, sample_str ) );
     RUN( connection.strlen( key, str_len ) );
-    CPPUNIT_ASSERT( str_len - sample_str.size() == 0);
+    CPPUNIT_ASSERT( str_len - sample_str.size() == 0 );
     RUN( connection.del(key) );
     RUN( connection.strlen(key, str_len) );
     CPPUNIT_ASSERT( str_len == 0 );
+}
 
+void ConnectionTestAbstract::test_expire() {
+
+}
+
+void ConnectionTestAbstract::test_ttl() {
+    test_expire();
 }
 
 void ConnectionTestAbstract::test_sadd() {
+    std::string key("test_sadd");
+    std::vector < std::string > result;
+
+    RUN(connection.del(key));// make sure key is empty
+
+    RUN(connection.sadd(key, "Moscow"));
+    RUN(connection.sadd(key, "Hanoi"));
+    RUN(connection.sadd(key, "Maryland"));
+
+    RUN(connection.smembers(key, result));
+    std::sort( result.begin(), result.end() );
+
+    CPPUNIT_ASSERT( result[0] == "Hanoi" );
+    CPPUNIT_ASSERT( result[1] == "Maryland" );
+    CPPUNIT_ASSERT( result[2] == "Moscow" );
 }
 
 void ConnectionTestAbstract::test_scard() {
+    std::string key("test_scard");
+    RUN( connection.del(key) ) // make sure key is empty
+    long long res_size, cnt = 0;
+
+    RUN(connection.scard(key, res_size));
+    CPPUNIT_ASSERT( res_size == 0 );
+
+    RUN(connection.sadd(key, "Moscow"));
+    cnt++;
+    RUN(connection.sadd(key, "Hanoi"));
+    cnt++;
+    RUN(connection.sadd(key, "Maryland"));
+    cnt++;
+    RUN(connection.scard(key, res_size));
+    CPPUNIT_ASSERT( res_size == cnt );
+
 }
 
 void ConnectionTestAbstract::test_sinter(){
@@ -466,4 +507,5 @@ void ConnectionTestAbstract::test_sinter(){
 }
 
 void ConnectionTestAbstract::test_smembers() {
+    test_sadd();
 }

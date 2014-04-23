@@ -26,6 +26,10 @@ class ConnectionTestAbstract : public CPPUNIT_NS::TestFixture
         CPPUNIT_TEST( test_set_bit );
         CPPUNIT_TEST( test_setrange );
         CPPUNIT_TEST( test_strlen );
+
+        CPPUNIT_TEST( test_expire );
+        CPPUNIT_TEST( test_ttl );
+
         CPPUNIT_TEST( test_sadd );
         CPPUNIT_TEST( test_scard );
         CPPUNIT_TEST( test_sinter );
@@ -55,6 +59,10 @@ protected:
     void test_set_bit();
     void test_setrange();
     void test_strlen();
+
+    void test_expire();
+    void test_ttl();
+
     void test_sadd();
     void test_scard();
     void test_sinter();
