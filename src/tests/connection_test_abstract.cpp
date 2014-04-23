@@ -4,7 +4,6 @@
 #include "connection_test_abstract.hpp"
 #define RUN(command) if(!command) {CPPUNIT_FAIL(connection.get_error());}
 #define VERSION_REQUIRED(version) if(connection.get_version() < version) {CPPUNIT_FAIL(std::string("Redis version:")+std::to_string(connection.get_version())+" is not enough for performing test");}
-//#define VERSION_REQUIRED(version) if(connection.get_version() < version) {CPPUNIT_TEST_SUITE_END();}
 #define CHECK_KEY(key, val) {std::string result_UNMEANING_SUFFIX; RUN(connection.get(key, result_UNMEANING_SUFFIX)); CPPUNIT_ASSERT_MESSAGE(result_UNMEANING_SUFFIX, result_UNMEANING_SUFFIX == val);}
 void ConnectionTestAbstract::setUp() {
     connection = std::move(get_connection());
