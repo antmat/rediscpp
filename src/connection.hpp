@@ -269,7 +269,7 @@ namespace Redis {
         bool client_kill(const Key& ip_and_port);
 
         /* Get the list of client connections */
-        //bool client_list(); //TODO : implement
+        bool client_list(); //TODO : implement  //anhdo
 
         /* Get the current connection name */
         //bool client getname(); //TODO : implement

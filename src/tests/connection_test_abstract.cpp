@@ -434,11 +434,39 @@ void ConnectionTestAbstract::test_strlen() {
 }
 
 void ConnectionTestAbstract::test_expire() {
-
+    // for redis 2.4, error between 0 and 1 second
+    // for redis 2.6, error between 0 and 1 milisecond
+    std::string key("test_expire");
+    std::string test_val("The Quick Brown Fox Jumps Over Lazy Dog");
+    RUN( connection.set(key, test_val));
+    RUN( connection.expire(key, 2,  Redis::Connection::ExpireType::SEC ));
+    CHECK_KEY( key, test_val );
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    CHECK_KEY( key, "");
+    VERSION_REQUIRED(20600);
+    RUN( connection.set(key, test_val));
+    RUN( connection.expire(key, 2000,  Redis::Connection::ExpireType::MSEC ));
+    CHECK_KEY( key, test_val );
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100));
+    CHECK_KEY( key, "");
 }
 
 void ConnectionTestAbstract::test_ttl() {
-    test_expire();
+    //VERSION_REQUIRED(20600);
+    std::string key("test_ttl");
+    long long sec_to_live;
+
+    RUN( connection.set(key,"The Quick Brown Fox Jumps Over Lazy Dog"));
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live == -1 );
+
+    RUN( connection.expire(key, 4,  Redis::Connection::ExpireType::SEC ));// can be 3 - 5 sec due to error in redis 2.4
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live < 3 && sec_to_live > 1 );// after 2 seconds, should be between 3 and 1
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));// additional 1 sec due to error in redis 2.4
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live == -1 );
 }
 
 void ConnectionTestAbstract::test_sadd() {
@@ -506,5 +534,19 @@ void ConnectionTestAbstract::test_sinter(){
 }
 
 void ConnectionTestAbstract::test_smembers() {
-    test_sadd();
+    std::string key("test_smembers");
+    std::vector < std::string > result;
+
+    RUN(connection.del(key));// make sure key is empty
+
+    RUN(connection.sadd(key, "Moscow"));
+    RUN(connection.sadd(key, "Hanoi"));
+    RUN(connection.sadd(key, "Maryland"));
+
+    RUN(connection.smembers(key, result));
+    std::sort( result.begin(), result.end() );
+
+    CPPUNIT_ASSERT( result[0] == "Hanoi" );
+    CPPUNIT_ASSERT( result[1] == "Maryland" );
+    CPPUNIT_ASSERT( result[2] == "Moscow" );
 }
