@@ -920,38 +920,26 @@ namespace Redis {
         return false;
     }
 
+    /*********************** server commands ***********************/
+    /* Asynchronously rewrite the append-only file */
+    bool Connection::bgrewriteaof() {
+        return d->run_command("BGREWRITEAOF");
+    }
 
-    /*********************** connection commands ***********************/
-//    /* Echo the given string. Return message will contain a copy of message*/
-//    bool Connection::echo(const Key& message, Connection::Key& return_message);
-//
-//    /* Echo the given string. In fact does nothing. Just for a full interface. */
-//    bool Connection::echo(const Key& message);
-//
-//    /* Ping the server */
-//    bool Connection::ping();
-//
-//    /* Close the connection */
-//    bool Connection::quit();
-//    bool Connection::disconnect();
-//
-//    /* Change the selected database for the current connection */
-//    bool Connection::select(long long db_num);
-//
-//
-//    /*********************** server commands ***********************/
-//    /* Asynchronously rewrite the append-only file */
-//    bool Connection::bgrewriteaof();
-//
-//    /* Asynchronously save the dataset to disk */
-//    bool Connection::bgsave();
-//
-//    /* Kill the connection of a client */
-//    bool Connection::client_kill(const Key& ip_and_port);
-//
-//    /* Get the list of client connections */
-//    //bool Connection::client_list(); //TODO : implement
-//
+    /* Asynchronously save the dataset to disk */
+    bool Connection::bgsave() {
+        return d->run_command("BGSAVE");
+    }
+
+    /* Kill the connection of a client */
+    bool Connection::client_kill(const Key& ip, long long port) {
+        std::string ip_and_port(ip+':'+std::to_string(port));
+        return d->run_command("CLIENT KILL %b", ip_and_port.c_str(), ip_and_port.size());
+    }
+
+    /* Get the list of client connections */
+    bool Connection::client_list(); //TODO : implement
+
 //    /* Get the current connection name */
 //    //bool Connection::client getname(); //TODO : implement
 //

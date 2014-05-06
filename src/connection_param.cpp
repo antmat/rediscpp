@@ -1,7 +1,7 @@
 #include "connection_param.hpp"
 namespace Redis {
     static std::hash<std::string> hash_fn;
-    ConnectionParam ConnectionParam::default_connection_param = {"127.0.0.1", 6379, "", 0, "", 1000, 1000, true, false};
+    ConnectionParam ConnectionParam::default_connection_param = {"127.0.0.1", 6379, "", 0, "", 1000, 1000, true, false, false};
     ConnectionParam::ConnectionParam(
             const std::string &_host,
             unsigned int _port,
@@ -11,7 +11,8 @@ namespace Redis {
             unsigned int _connect_timeout_ms,
             unsigned int _operation_timeout_ms,
             bool _reconnect_on_failure,
-            bool _throw_on_error
+            bool _throw_on_error,
+            bool _split_long_commands
     ) :
             host(_host),
             port(_port),
@@ -21,7 +22,8 @@ namespace Redis {
             connect_timeout_ms(_connect_timeout_ms),
             operation_timeout_ms(_operation_timeout_ms),
             reconnect_on_failure(_reconnect_on_failure),
-            throw_on_error(_throw_on_error)
+            throw_on_error(_throw_on_error),
+            split_long_commands(_split_long_commands)
     {}
     unsigned long long ConnectionParam::get_hash() const {
             return

@@ -11,7 +11,7 @@ namespace Redis {
     class Connection {
     public:
         //Some empiric value after which library will reject commands
-        static constexpr size_t max_key_count_per_command = 50000;
+        static constexpr size_t max_key_count_per_command = 1000000; //Actual limit in redis is 1048576
         static constexpr long default_scan_count = 10; //defaulted by redis (2.8 at least)
         typedef std::string Key;
         typedef std::vector<Key> KeyVec;
@@ -224,34 +224,6 @@ namespace Redis {
         bool strlen(const Key& key, long long& key_length);
 
 
-        /*******************************************************************/
-        /*******************************************************************/
-        /*********************** connection commands ***********************/
-        /*******************************************************************/
-        /*******************************************************************/
-
-        //NOTE: Disable auth. It's dedicated to internals
-        /* Authenticate to the server */
-        //bool auth(const Key& password);
-
-        /* Echo the given string. Return message will contain a copy of message*/
-        bool echo(const Key& message, Key& return_message);
-
-        /* Echo the given string. In fact does nothing. Just for a full interface. */
-        bool echo(const Key& message);
-
-        /* Ping the server */
-        bool ping();
-
-        /* Close the connection */
-        bool quit();
-
-        /* Close the connection */
-        bool disconnect();
-
-        //NOTE: We passed db in connection. Disable db switching
-        /* Change the selected database for the current connection */
-        //bool select(long long db_num);
 
         /*******************************************************************/
         /*******************************************************************/
@@ -266,10 +238,10 @@ namespace Redis {
         bool bgsave();
 
         /* Kill the connection of a client */
-        bool client_kill(const Key& ip_and_port);
+        bool client_kill(const Key& ip, long long port);
 
         /* Get the list of client connections */
-        //bool client_list(); //TODO : implement
+        bool client_list();
 
         /* Get the current connection name */
         //bool client getname(); //TODO : implement

@@ -211,4 +211,5 @@ namespace Redis {
                 k2(std::make_pair(ValIter<Iterator>(c.begin()), ValIter<Iterator>(c.end())))
         {}
     };
+
 }

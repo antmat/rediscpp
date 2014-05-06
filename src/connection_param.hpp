@@ -15,6 +15,7 @@ namespace Redis {
         unsigned int operation_timeout_ms;
         bool reconnect_on_failure;
         bool throw_on_error;
+        bool split_long_commands;
 
         bool operator==(const ConnectionParam& other) const {
             return
@@ -26,7 +27,8 @@ namespace Redis {
                     connect_timeout_ms == other.connect_timeout_ms &&
                     operation_timeout_ms == other.operation_timeout_ms &&
                     reconnect_on_failure == other.reconnect_on_failure &&
-                    throw_on_error == other.throw_on_error;
+                    throw_on_error == other.throw_on_error &&
+                    split_long_commands == other.split_long_commands;
         }
 
 
@@ -69,6 +71,9 @@ namespace Redis {
             default_connection_param.throw_on_error = throw_on_error;
         }
 
+        inline static void set_split_long_commands(bool split_long_commands) {
+            default_connection_param.split_long_commands = split_long_commands;
+        }
         inline static const ConnectionParam &get_default_connection_param() {
             return default_connection_param;
         }
@@ -82,7 +87,8 @@ namespace Redis {
                 unsigned int connect_timeout_ms = default_connection_param.connect_timeout_ms,
                 unsigned int operation_timeout_ms = default_connection_param.operation_timeout_ms,
                 bool try_reconnect_on_failure = default_connection_param.reconnect_on_failure,
-                bool throw_on_error = default_connection_param.throw_on_error
+                bool throw_on_error = default_connection_param.throw_on_error,
+                bool split_long_commands = default_connection_param.split_long_commands
         );
         ConnectionParam(ConnectionParam &&other);
         ConnectionParam(const ConnectionParam &) = default;
