@@ -319,7 +319,7 @@ namespace Redis {
                 err = Error::UNEXPECTED_INFO_RESULT;
                 return false;
             }
-            auto major_pos = info_data.find('.', pos+14);
+            auto major_pos = info_data.find('.', pos+14);// 14 = length("redis_version:")
             if(major_pos == std::string::npos) {
                 prev_err = (err == Error::NONE ? prev_err : err);
                 err = Error::UNEXPECTED_INFO_RESULT;

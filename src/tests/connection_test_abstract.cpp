@@ -10,6 +10,7 @@ void ConnectionTestAbstract::setUp() {
 }
 void ConnectionTestAbstract::tearDown() {
 }
+
 void ConnectionTestAbstract::test_append() {
     std::string key = "test_append";
     RUN(connection.set(key, "v"));
@@ -139,6 +140,7 @@ void ConnectionTestAbstract::test_bitop() {
     CPPUNIT_ASSERT(result == "\xff\xff\xff");
 }
 void ConnectionTestAbstract::test_bitpos() {
+    VERSION_REQUIRED(20807);
     std::string val("\x00\x0f\x00\xf0", 4);
     std::string val_zero("\x00\x00\x00", 3);
     std::string val_one("\xff\xff\xff", 3);
@@ -296,6 +298,7 @@ void ConnectionTestAbstract::test_incrby(){
     CPPUNIT_ASSERT(res_value == 100506);
 }
 void ConnectionTestAbstract::test_incrbyfloat(){
+    VERSION_REQUIRED(20600);
     std::string val("10.0");
     std::string invalid_val("UPCHK");
     std::string key("test_decr");
@@ -385,16 +388,123 @@ void ConnectionTestAbstract::test_set(){
 
 }
 void ConnectionTestAbstract::test_set_bit() {
-
+    std::string key("test_set_bit");
+    Redis::Connection::Bit bit;
+    Redis::Connection::Bit original_bit;
+    RUN(connection.set_bit(key, 32, Redis::Connection::Bit::ONE));
+    RUN(connection.getbit(key, 32, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ZERO));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ZERO);
+    RUN(connection.set_bit(key, 64, Redis::Connection::Bit::ONE, original_bit ));
+    RUN(connection.getbit(key, 64, bit));
+    CPPUNIT_ASSERT(bit == Redis::Connection::Bit::ONE);
+    CPPUNIT_ASSERT(original_bit == Redis::Connection::Bit::ZERO);
 }
+
 void ConnectionTestAbstract::test_setrange() {
+    std::string key("test_setrange");
+    std::string result;
+    long long str_len;
 
+    RUN( connection.set(key, "test string one" ) );
+    RUN( connection.setrange(key, 5, "STRING" )  );
+    RUN( connection.get(key, result) );
+    CPPUNIT_ASSERT( result == "test STRING one" );
+
+    RUN( connection.setrange(key, 5, "a different string", str_len )  );
+    RUN( connection.get(key, result) );
+    CPPUNIT_ASSERT( result ==  "test a different string" );
+    CPPUNIT_ASSERT( str_len == 23 );
+
+    CPPUNIT_ASSERT_ASSERTION_FAIL( RUN( connection.setrange(key, -1, "Should be an error" ) ) );
 }
+
 void ConnectionTestAbstract::test_strlen() {
-
+    std::string key("test_strlen");
+    std::string sample_str("The Quick Brown Fox Jumps Over Lazy Dog");
+    long long str_len;
+    RUN( connection.set( key, sample_str ) );
+    RUN( connection.strlen( key, str_len ) );
+    CPPUNIT_ASSERT( str_len - sample_str.size() == 0 );
+    RUN( connection.del(key) );
+    RUN( connection.strlen(key, str_len) );
+    CPPUNIT_ASSERT( str_len == 0 );
 }
 
+void ConnectionTestAbstract::test_expire() {
+    // for redis 2.4, error between 0 and 1 second
+    // for redis 2.6, error between 0 and 1 milisecond
+    std::string key("test_expire");
+    std::string test_val("The Quick Brown Fox Jumps Over Lazy Dog");
+    RUN( connection.set(key, test_val));
+    RUN( connection.expire(key, 2,  Redis::Connection::ExpireType::SEC ));
+    CHECK_KEY( key, test_val );
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    CHECK_KEY( key, "");
+    VERSION_REQUIRED(20600);
+    RUN( connection.set(key, test_val));
+    RUN( connection.expire(key, 2000,  Redis::Connection::ExpireType::MSEC ));
+    CHECK_KEY( key, test_val );
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100));
+    CHECK_KEY( key, "");
+}
 
+void ConnectionTestAbstract::test_ttl() {
+    //VERSION_REQUIRED(20600);
+    std::string key("test_ttl");
+    long long sec_to_live;
+
+    RUN( connection.set(key,"The Quick Brown Fox Jumps Over Lazy Dog"));
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live == -1 );
+
+    RUN( connection.expire(key, 4,  Redis::Connection::ExpireType::SEC ));// can be 3 - 5 sec due to error in redis 2.4
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live < 3 && sec_to_live > 1 );// after 2 seconds, should be between 3 and 1
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));// additional 1 sec due to error in redis 2.4
+    RUN( connection.ttl(key, sec_to_live) );
+    CPPUNIT_ASSERT( sec_to_live == -1 );
+}
+
+void ConnectionTestAbstract::test_sadd() {
+    std::string key("test_sadd");
+    std::vector < std::string > result;
+
+    RUN(connection.del(key));// make sure key is empty
+
+    RUN(connection.sadd(key, "Moscow"));
+    RUN(connection.sadd(key, "Hanoi"));
+    RUN(connection.sadd(key, "Maryland"));
+
+    RUN(connection.smembers(key, result));
+    std::sort( result.begin(), result.end() );
+
+    CPPUNIT_ASSERT( result[0] == "Hanoi" );
+    CPPUNIT_ASSERT( result[1] == "Maryland" );
+    CPPUNIT_ASSERT( result[2] == "Moscow" );
+}
+
+void ConnectionTestAbstract::test_scard() {
+    std::string key("test_scard");
+    RUN( connection.del(key) ) // make sure key is empty
+    long long res_size, cnt = 0;
+
+    RUN(connection.scard(key, res_size));
+    CPPUNIT_ASSERT( res_size == 0 );
+
+    RUN(connection.sadd(key, "Moscow"));
+    cnt++;
+    RUN(connection.sadd(key, "Hanoi"));
+    cnt++;
+    RUN(connection.sadd(key, "Maryland"));
+    cnt++;
+    RUN(connection.scard(key, res_size));
+    CPPUNIT_ASSERT( res_size == cnt );
+
+}
 
 void ConnectionTestAbstract::test_sinter(){
     std::string key1("test_sinter1");
@@ -421,4 +531,22 @@ void ConnectionTestAbstract::test_sinter(){
     std::sort(result.begin(), result.end());
     CPPUNIT_ASSERT(result[0] == "1");
     CPPUNIT_ASSERT(result[1] == "2");
+}
+
+void ConnectionTestAbstract::test_smembers() {
+    std::string key("test_smembers");
+    std::vector < std::string > result;
+
+    RUN(connection.del(key));// make sure key is empty
+
+    RUN(connection.sadd(key, "Moscow"));
+    RUN(connection.sadd(key, "Hanoi"));
+    RUN(connection.sadd(key, "Maryland"));
+
+    RUN(connection.smembers(key, result));
+    std::sort( result.begin(), result.end() );
+
+    CPPUNIT_ASSERT( result[0] == "Hanoi" );
+    CPPUNIT_ASSERT( result[1] == "Maryland" );
+    CPPUNIT_ASSERT( result[2] == "Moscow" );
 }
