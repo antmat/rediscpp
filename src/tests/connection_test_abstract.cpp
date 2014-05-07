@@ -452,21 +452,18 @@ void ConnectionTestAbstract::test_expire() {
 }
 
 void ConnectionTestAbstract::test_ttl() {
-    //VERSION_REQUIRED(20600);
     std::string key("test_ttl");
     long long sec_to_live;
-
     RUN( connection.set(key,"The Quick Brown Fox Jumps Over Lazy Dog"));
     RUN( connection.ttl(key, sec_to_live) );
-    CPPUNIT_ASSERT( sec_to_live == -1 );
-
+    CPPUNIT_ASSERT( sec_to_live == -1 );    // no expire, return code = -1
     RUN( connection.expire(key, 4,  Redis::Connection::ExpireType::SEC ));// can be 3 - 5 sec due to error in redis 2.4
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     RUN( connection.ttl(key, sec_to_live) );
     CPPUNIT_ASSERT( sec_to_live < 3 && sec_to_live > 1 );// after 2 seconds, should be between 3 and 1
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));// additional 1 sec due to error in redis 2.4
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));// additional 1 sec due to errors in redis 2.4
     RUN( connection.ttl(key, sec_to_live) );
-    CPPUNIT_ASSERT( sec_to_live == -1 );
+    CPPUNIT_ASSERT( sec_to_live == -2 );    // key should be vanished, return code = -2
 }
 
 void ConnectionTestAbstract::test_sadd() {
