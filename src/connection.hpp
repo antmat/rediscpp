@@ -602,22 +602,24 @@ namespace Redis {
         bool scard(const Key& key, long long& result_size);
 
         /* Subtract multiple sets */
-//        bool sdiff(const KeyVec& keys);
+        bool sdiff(const KeyVec& keys, KeyVec& result);
 
         /* Subtract multiple sets and store the resulting set in a key */
-//        bool sdiffstore(VAL destination, const KeyVec& keys);
+        bool sdiffstore(const Key& destination, const KeyVec& keys);
+        bool sdiffstore(const Key& destination, const KeyVec& keys, long long& number_of_elements);
 
         /* Intersect multiple sets */
         bool sinter(const KeyVec& keys, KeyVec& result);
 
         /* Intersect multiple sets and store the resulting set in a key */
-//        bool sinterstore(VAL destination, const KeyVec& keys);
+        bool sinterstore(const Key& destination, const KeyVec& keys);
+        bool sinterstore(const Key& destination, const KeyVec& keys, long long& number_of_elements);
 
         /* Determine if a given value is a member of a set */
 //        bool sismember(const Key& key, VAL member);
 
         /* Get all the members in a set */
-        bool smembers(const Key& key, KeyVec& resul);
+        bool smembers(const Key& key, KeyVec& result);
 
         /* Move a member from one set to another */
 //        bool smove(VAL source, VAL destination, VAL member);
@@ -632,10 +634,11 @@ namespace Redis {
 //        bool srem(const Key& key, VAL member [member ...]);
 
         /* Add multiple sets */
-//        bool sunion(const KeyVec& keys);
+        bool sunion(const KeyVec& keys, KeyVec& result);
 
         /* Add multiple sets and store the resulting set in a key */
-//        bool sunionstore(VAL destination, const KeyVec& keys);
+        bool sunionstore(const Key& destination, const KeyVec& keys);
+        bool sunionstore(const Key& destination, const KeyVec& keys, long long& number_of_elements);
 
         /* Incrementally iterate Set elements */
 //        bool sscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);

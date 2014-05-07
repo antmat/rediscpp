@@ -525,6 +525,41 @@ namespace Redis {
             }
             return false;
         }
+        bool run_set_command(const char* comm, size_t comm_sz, const KeyVec& keys, KeyVec& result) {
+            std::vector<size_t> sizes(1);
+            std::vector<const char*> command_parts_c_strings(1);
+            command_parts_c_strings[0] = comm;
+            sizes[0] = comm_sz;
+            KeyVec prefixed_keys;
+            append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
+            if(run_command(command_parts_c_strings, sizes)) {
+                result.clear();
+                redis_assert(reply->type == REDIS_REPLY_ARRAY);
+                for(size_t i=0; i < reply->elements; i++) {
+                    redis_assert(reply->element[i]->type == REDIS_REPLY_STRING);
+                    result.push_back(reply->element[i]->str);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        bool run_set_store_command(const char* comm, size_t comm_sz, const Key& destination, const KeyVec& keys, long long& number_of_elements) {
+            std::vector<size_t> sizes(2);
+            std::vector<const char*> command_parts_c_strings(2);
+            command_parts_c_strings[0] = comm;
+            sizes[0] = comm_sz;
+            const Key& prefixed_dest = add_prefix_to_key(destination);
+            command_parts_c_strings[1] = prefixed_dest.c_str();
+            sizes[1] = prefixed_dest.size();
+            KeyVec prefixed_keys;
+            append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
+            if(run_command(command_parts_c_strings, sizes)) {
+                redis_assert(reply->type == REDIS_REPLY_INTEGER);
+                number_of_elements = reply->integer;
+            }
+            return false;
+        }
     };
     std::atomic_long Connection::Implementation::id_counter(0);
 
@@ -938,7 +973,7 @@ namespace Redis {
     }
 
     /* Get the list of client connections */
-    bool Connection::client_list(); //TODO : implement
+    //bool Connection::client_list(); //TODO : implement
 
 //    /* Get the current connection name */
 //    //bool Connection::client getname(); //TODO : implement
@@ -1416,33 +1451,33 @@ namespace Redis {
     }
 
     /* Subtract multiple sets */
-//        bool sdiff(const KeyVec& keys);
+    bool Connection::sdiff(const KeyVec& keys, KeyVec& result) {
+        return d->run_set_command("SDIFF", 5, keys, result);
+    }
 
     /* Subtract multiple sets and store the resulting set in a key */
-//        bool sdiffstore(VAL destination, const KeyVec& keys);
+    bool Connection::sdiffstore(const Key& destination, const KeyVec& keys) {
+        long long num_of_elements;
+        return d->run_set_store_command("SDIFFSTORE", 10, destination, keys, num_of_elements);
+    }
+
+    bool Connection::sdiffstore(const Key& destination, const KeyVec& keys, long long& num_of_elements) {
+        return d->run_set_store_command("SDIFFSTORE", 10, destination, keys, num_of_elements);
+    }
 
     /* Intersect multiple sets */
     bool Connection::sinter(const KeyVec& keys, KeyVec& result) {
-        std::vector<size_t> sizes(1);
-        std::vector<const char*> command_parts_c_strings(1);
-        command_parts_c_strings[0] = "SINTER";
-        sizes[0] = 6;
-        KeyVec prefixed_keys;
-        d->append_c_strings_with_prefixes_and_sizes(keys, prefixed_keys, command_parts_c_strings, sizes);
-        if(d->run_command(command_parts_c_strings, sizes)) {
-            result.clear();
-            redis_assert(d->reply->type == REDIS_REPLY_ARRAY);
-            for(size_t i=0; i < d->reply->elements; i++) {
-                redis_assert(d->reply->element[i]->type == REDIS_REPLY_STRING);
-                result.push_back(d->reply->element[i]->str);
-            }
-            return true;
-        }
-        return false;
+        return d->run_set_command("SINTER", 6, keys, result);
     }
 
     /* Intersect multiple sets and store the resulting set in a key */
-//        bool sinterstore(VAL destination, const KeyVec& keys);
+    bool Connection::sinterstore(const Key& destination, const KeyVec& keys) {
+        long long num_of_elements;
+        return d->run_set_store_command("SINTERSTORE", 11, destination, keys, num_of_elements);
+    }
+    bool Connection::sinterstore(const Key& destination, const KeyVec& keys, long long& number_of_elements) {
+        return d->run_set_store_command("SINTERSTORE", 11, destination, keys, number_of_elements);
+    }
 
     /* Determine if a given value is a member of a set */
 //        bool sismember(const Key& key, VAL member);
@@ -1475,10 +1510,19 @@ namespace Redis {
 //        bool srem(const Key& key, VAL member [member ...]);
 
     /* Add multiple sets */
-//        bool sunion(const KeyVec& keys);
+    bool Connection::sunion(const KeyVec& keys, KeyVec& result) {
+        return d->run_set_command("SUNION", 6, keys, result);
+    }
 
     /* Add multiple sets and store the resulting set in a key */
-//        bool sunionstore(VAL destination, const KeyVec& keys);
+    bool Connection::sunionstore(const Key& destination, const KeyVec& keys) {
+        long long num_of_elements;
+        return d->run_set_store_command("SUNIONSTORE", 11, destination, keys, num_of_elements);
+    }
+
+    bool Connection::sunionstore(const Key& destination, const KeyVec& keys, long long& num_of_elements) {
+        return d->run_set_store_command("SUNIONSTORE", 11, destination, keys, num_of_elements);
+    }
 
     /* Incrementally iterate Set elements */
 //        bool sscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);

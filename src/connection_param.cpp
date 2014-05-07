@@ -48,7 +48,8 @@ namespace Redis {
             connect_timeout_ms(other.connect_timeout_ms),
             operation_timeout_ms(other.operation_timeout_ms),
             reconnect_on_failure(other.reconnect_on_failure),
-            throw_on_error(other.throw_on_error)
+            throw_on_error(other.throw_on_error),
+            split_long_commands(other.split_long_commands)
     {
     }
 }
