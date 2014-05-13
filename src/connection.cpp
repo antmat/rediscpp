@@ -537,7 +537,7 @@ namespace Redis {
                 redis_assert(reply->type == REDIS_REPLY_ARRAY);
                 for(size_t i=0; i < reply->elements; i++) {
                     redis_assert(reply->element[i]->type == REDIS_REPLY_STRING);
-                    result.push_back(reply->element[i]->str);
+                    result.push_back(std::string(reply->element[i]->str, reply->element[i]->len));
                 }
                 return true;
             }

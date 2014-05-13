@@ -506,10 +506,13 @@ void ConnectionTestAbstract::test_scard() {
 void ConnectionTestAbstract::test_sinter(){
     std::string key1("test_sinter1");
     std::string key2("test_sinter2");
-    RUN(connection.sadd(key1, "1"));
+    std::string bin_val("1\x001", 3);
+    RUN(connection.del(key1));
+    RUN(connection.del(key2));
+    RUN(connection.sadd(key1, bin_val));
     RUN(connection.sadd(key1, "2"));
     RUN(connection.sadd(key1, "3"));
-    RUN(connection.sadd(key2, "1"));
+    RUN(connection.sadd(key2, bin_val));
     RUN(connection.sadd(key2, "2"));
     RUN(connection.sadd(key2, "5"));
     std::vector<std::string> keys;
@@ -518,7 +521,7 @@ void ConnectionTestAbstract::test_sinter(){
     RUN(connection.sinter(keys, result));
     CPPUNIT_ASSERT(result.size() == 3);
     std::sort(result.begin(), result.end());
-    CPPUNIT_ASSERT(result[0] == "1");
+    CPPUNIT_ASSERT(result[0] == bin_val);
     CPPUNIT_ASSERT(result[1] == "2");
     CPPUNIT_ASSERT(result[2] == "3");
 
@@ -526,7 +529,7 @@ void ConnectionTestAbstract::test_sinter(){
     RUN(connection.sinter(keys, result));
     CPPUNIT_ASSERT(result.size() == 2);
     std::sort(result.begin(), result.end());
-    CPPUNIT_ASSERT(result[0] == "1");
+    CPPUNIT_ASSERT(result[0] == bin_val);
     CPPUNIT_ASSERT(result[1] == "2");
 }
 
