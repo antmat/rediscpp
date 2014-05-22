@@ -44,7 +44,7 @@ namespace Redis {
         enum class ExpireType { NONE, SEC, MSEC };
         enum class SetType { ALWAYS, IF_EXIST, IF_NOT_EXIST };
         enum class ListInsertType { AFTER, BEFORE };
-
+        enum class Order { ASC, DESC };
 
 
         Connection &operator=(const Connection &other) = delete;
@@ -95,23 +95,23 @@ namespace Redis {
         bool bitcount(const Key& key, long long& result);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys, long long& size_of_dest);
+        bool bitop(BitOperation operation, const Key& destkey, const StringKeyHolder& keys, long long& size_of_dest);
 
         /* Perform bitwise operations between strings */
-        bool bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys);
+        bool bitop(BitOperation operation, const Key& destkey, const StringKeyHolder& keys);
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_and(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
+        inline bool bit_and(const Key& destkey, const StringKeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::AND, destkey, keys, size_of_dest);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_or(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
+        inline bool bit_or(const Key& destkey, const StringKeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::OR, destkey, keys, size_of_dest);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_xor(const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
+        inline bool bit_xor(const Key& destkey, const StringKeyHolder& keys, long long& size_of_dest) {
             return bitop(BitOperation::XOR, destkey, keys, size_of_dest);
         }
 
@@ -119,17 +119,17 @@ namespace Redis {
         bool bit_not(const Key& destkey, const Key& key, long long& size_of_dest);
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_and(const Key& destkey, const KeyHolder& keys) {
+        inline bool bit_and(const Key& destkey, const StringKeyHolder& keys) {
             return bitop(BitOperation::AND, destkey, keys);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_or(const Key& destkey, const KeyHolder& keys) {
+        inline bool bit_or(const Key& destkey, const StringKeyHolder& keys) {
             return bitop(BitOperation::OR, destkey, keys);
         }
 
         /* perform and operation between strings and store result in destkey */
-        inline bool bit_xor(const Key& destkey, const KeyHolder& keys) {
+        inline bool bit_xor(const Key& destkey, const StringKeyHolder& keys) {
             return bitop(BitOperation::XOR, destkey, keys);
         }
 
@@ -161,10 +161,10 @@ namespace Redis {
         bool get(const Key& key, Key& result);
 
         /* Get the value of a bunch of keys */
-        bool get(const KeyHolder& keys, ValueHolder&& vals);
+        bool get(const StringKeyHolder& keys, StringValueHolder&& vals);
 
         /* Get the value of a bunch of keys */
-        bool get(KVHolder&& vals);
+        bool get(StringKVHolder&& vals);
 
         /* Returns the bit value at offset in the string value stored at key */
         bool getbit(const Key& key, long long offset, Bit& result);
@@ -199,8 +199,8 @@ namespace Redis {
         /* Increment the float value of a key by the given amount */
         bool incrbyfloat(const Key& key, double increment);
 
-        bool set(const KeyHolder& keys, const KeyHolder& values, SetType set_type = SetType::ALWAYS);
-        bool set(KKHolder&& kv, SetType set_type = SetType::ALWAYS);
+        bool set(const StringKeyHolder& keys, const StringKeyHolder& values, SetType set_type = SetType::ALWAYS);
+        bool set(StringKKHolder&& kv, SetType set_type = SetType::ALWAYS);
 
         /* Set the string value of a key */
         bool set(const char* key, const char* value, SetType set_type = SetType::ALWAYS, long long expire = 0, ExpireType expire_type = ExpireType::NONE);
@@ -314,10 +314,10 @@ namespace Redis {
         /*******************************************************************/
 
         /* Remove and get the first element in a list, or block until one is available */
-        bool blpop(const KeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
+        bool blpop(const StringKeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Remove and get the last element in a list, or block until one is available */
-        bool brpop(const KeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
+        bool brpop(const StringKeyHolder& keys, long long timeout, Key& chosen_key, Key& value);
 
         /* Pop a value from a list, push it to another list and return it; or block until one is available */
         bool brpoplpush(const Key& source, const Key& destination, long long timeout, Key& result);
@@ -350,10 +350,10 @@ namespace Redis {
         bool lpush(const Key& key, const Key& value);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(const Key& key, const KeyHolder& values, long long& list_length);
+        bool lpush(const Key& key, const StringKeyHolder& values, long long& list_length);
 
         /* Prepend one or multiple values to a list */
-        bool lpush(const Key& key, const KeyHolder& values);
+        bool lpush(const Key& key, const StringKeyHolder& values);
 
         /* Prepend a value to a list, only if the list exists */
         bool lpushx(const Key& key, const Key& value, long long& list_length);
@@ -457,7 +457,7 @@ namespace Redis {
         bool type(const Key& key, KeyType& type);
 
         /* Incrementally iterate the keys space */
-        bool scan(unsigned long long& cursor, ValueHolder&& result_keys, const Key& pattern = "*", long count = default_scan_count);
+        bool scan(unsigned long long& cursor, StringValueHolder&& result_keys, const Key& pattern = "*", long count = default_scan_count);
 
         /*********************************************************************/
         /*********************************************************************/
@@ -651,55 +651,61 @@ namespace Redis {
         /*******************************************************************/
 
         /* Add one or more members to a sorted set, or update its score if it already exists */
-//        bool zadd(const Key& key, VAL score member [score member ...]);
+        bool zadd(const Key& key, const KKHolder<std::string, double>&);
+        bool zadd(const Key& key, const KKHolder<std::string, double>&, long long& num_of_inserted_elements);
+
+        bool zadd(const Key& key, const Key& member, double score);
+        bool zadd(const Key& key, const Key& member, double score, bool& was_inserted);
 
         /* Get the number of members in a sorted set */
-//        bool zcard(const Key& key);
+        bool zcard(const Key& key, long long& result);
 
         /* Count the members in a sorted set with scores within the given values */
-//        bool zcount(const Key& key, VAL min, VAL max);
+        bool zcount(const Key& key, long long min, long long max);
 
         /* Increment the score of a member in a sorted set */
-//        bool zincrby(const Key& key, VAL increment, VAL member);
+        bool zincrby(const Key& key, double increment, const Key& member);
+        bool zincrby(const Key& key, double increment, const Key& member, double& new_score);
 
         /* Intersect multiple sorted sets and store the resulting sorted set in a new key */
-//        bool zinterstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+        bool zinterstore(const Key& destination, const StringKeyHolder& keys);
+        /* Intersect multiple sorted sets and store the resulting sorted set in a new key */
+        bool zinterstore(const Key& destination, const KKHolder<std::string, double>& keys_with_multipliers);
 
         /* Return a range of members in a sorted set, by index */
-//        bool zrange(const Key& key, VAL start, VAL stop, bool withscores = false);
+        bool zrange(const Key& key, long long start, long long stop, StringValueHolder&& values, Order = Order::ASC);
+        bool zrange_with_scores(const Key& key, long long start, long long stop, PairHolder<std::string, double>&& values, Order = Order::ASC);
 
         /* Return a range of members in a sorted set, by score */
-//        bool zrangebyscore(const Key& key, VAL min, VAL max, bool withscores = false /*, [LIMIT offset count] */);
+        bool zrangebyscore(const Key& key, double min, double max, StringValueHolder&& values, Order = Order::ASC);
 
         /* Determine the index of a member in a sorted set */
-//        bool zrank(const Key& key, VAL member);
+        //bool zrank(const Key& key, VAL member);
 
         /* Remove one or more members from a sorted set */
-//        bool zrem(const Key& key, VAL member [member ...]);
+        //bool zrem(const Key& key, VAL member [member ...]);
 
         /* Remove all members in a sorted set within the given indexes */
-//        bool zremrangebyrank(const Key& key, VAL start, VAL stop);
+        bool zremrangebyrank(const Key& key, long long start, long long stop, Order = Order::ASC);
+        bool zremrangebyrank(const Key& key, long long start, long long stop, long long& element_removed_cnt, Order = Order::ASC);
 
         /* Remove all members in a sorted set within the given scores */
-//        bool zremrangebyscore(const Key& key, VAL min, VAL max);
-
-        /* Return a range of members in a sorted set, by index, with scores ordered from high to low */
-//        bool zrevrange(const Key& key, VAL start, VAL stop, bool withscores = false);
+        //bool zremrangebyscore(const Key& key, VAL min, VAL max);
 
         /* Return a range of members in a sorted set, by score, with scores ordered from high to low */
-//        bool zrevrangebyscore(const Key& key, VAL max, VAL min, bool withscores = false /*, [LIMIT offset count] */);
+        //bool zrevrangebyscore(const Key& key, VAL max, VAL min, bool withscores = false /*, [LIMIT offset count] */);
 
         /* Determine the index of a member in a sorted set, with scores ordered from high to low */
-//        bool zrevrank(const Key& key, VAL member);
+        //bool zrevrank(const Key& key, VAL member);
 
         /* Get the score associated with the given member in a sorted set */
-//        bool zscore(const Key& key, VAL member);
+        //bool zscore(const Key& key, VAL member);
 
         /* Add multiple sorted sets and store the resulting sorted set in a new key */
-//        bool zunionstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
+        //bool zunionstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
 
         /* Incrementally iterate sorted sets elements and associated scores */
-//        bool zscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
+        //bool zscan(const Key& key, VAL cursor /*, [MATCH pattern] */ /*, [COUNT count] */);
     private:
         //Pimpl
         class Implementation;

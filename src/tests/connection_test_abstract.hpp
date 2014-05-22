@@ -35,6 +35,8 @@ class ConnectionTestAbstract : public CPPUNIT_NS::TestFixture
         CPPUNIT_TEST( test_sinter );
         CPPUNIT_TEST( test_smembers );
 
+        CPPUNIT_TEST( test_zincrby );
+
 
     CPPUNIT_TEST_SUITE_END_ABSTRACT();
 public:
@@ -67,6 +69,7 @@ protected:
     void test_scard();
     void test_sinter();
     void test_smembers();
+    void test_zincrby();
 
 
 

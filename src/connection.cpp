@@ -655,12 +655,12 @@ namespace Redis {
     }
 
     /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys, long long& size_of_dest) {
+    bool Connection::bitop(BitOperation operation, const Key& destkey, const StringKeyHolder& keys, long long& size_of_dest) {
         return d->bitop(operation, destkey, keys, size_of_dest);
     }
 
     /* Perform bitwise operations between strings */
-    bool Connection::bitop(BitOperation operation, const Key& destkey, const KeyHolder& keys) {
+    bool Connection::bitop(BitOperation operation, const Key& destkey, const StringKeyHolder& keys) {
         long long res;
         return bitop(operation, destkey, keys, res);
     }
@@ -754,7 +754,7 @@ namespace Redis {
     }
 
     /* Get the value of multiple keys */
-    bool Connection::get(const KeyHolder& keys, ValueHolder&& result) {
+    bool Connection::get(const StringKeyHolder& keys, StringValueHolder&& result) {
         std::vector<size_t> sizes(1);
         std::vector<const char*> command_parts_c_strings(1);
         command_parts_c_strings[0] = "MGET";
@@ -779,7 +779,7 @@ namespace Redis {
         return false;
     }
 
-    bool Connection::get(KVHolder&& vals) {
+    bool Connection::get(StringKVHolder&& vals) {
         return get(vals.k, std::move(vals.v));
     }
 
@@ -886,12 +886,12 @@ namespace Redis {
     }
 
 
-    bool Connection::set(const KeyHolder& keys, const KeyHolder& values, SetType set_type) {
+    bool Connection::set(const StringKeyHolder& keys, const StringKeyHolder& values, SetType set_type) {
         bool was_set;
         return d->set(keys, values, set_type, was_set);
     }
 
-    bool Connection::set(KKHolder&& kk, SetType set_type) {
+    bool Connection::set(StringKKHolder&& kk, SetType set_type) {
         bool was_set;
         return d->set(kk.k1, kk.k2, set_type, was_set);
     }
@@ -1265,7 +1265,7 @@ namespace Redis {
     }
 
     /* Incrementally iterate the keys space */
-    bool Connection::scan(unsigned long long& cursor, ValueHolder&& result_keys, const Key& pattern, long count) {
+    bool Connection::scan(unsigned long long& cursor, StringValueHolder&& result_keys, const Key& pattern, long count) {
         bool ret;
         const Key& prefixed_pattern = d->add_prefix_to_key(pattern);
         if(prefixed_pattern != "*") {
@@ -1530,7 +1530,52 @@ namespace Redis {
 
     /*********************** sorted_set commands ***********************/
     /* Add one or more members to a sorted set, or update its score if it already exists */
-//        bool zadd(const Key& key, VAL score member [score member ...]);
+    bool Connection::zadd(const Key& key, const  KKHolder<std::string, double>& members_with_scores) {
+        long long num_of_inserted_elements;
+        return zadd(key, members_with_scores, num_of_inserted_elements);
+    }
+    bool Connection::zadd(const Key& key, const KKHolder<std::string, double>& members_with_scores, long long& num_of_inserted_elements) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        size_t sz = members_with_scores.size();
+        std::vector<size_t> sizes(2+sz*2);
+        std::vector<const char*> command_parts_c_strings(2+sz*2);
+        command_parts_c_strings[0] = "ZADD";
+        sizes[0] = 4;
+        command_parts_c_strings[1] = prefixed_key.c_str();
+        sizes[1] = prefixed_key.size();
+        std::vector<std::string> scores_only;
+        for (size_t i = 0; i < members_with_scores.size(); i++) {
+            scores_only.emplace_back(std::to_string(members_with_scores.k2[i]));
+        }
+        for (size_t i = 0; i < members_with_scores.size(); i++) {
+            command_parts_c_strings[2*i+2] = scores_only[i].c_str();
+            sizes[2*i+2] = scores_only[i].size();
+
+            command_parts_c_strings[2*i+3] = members_with_scores.k1[i].c_str();
+            sizes[2*i+3] = members_with_scores.k1[i].size();
+        }
+        if(d->run_command(command_parts_c_strings, sizes)) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            num_of_inserted_elements = d->reply->integer;
+            return true;
+        }
+        return false;
+    }
+    bool Connection::zadd(const Key& key, const Key& member, double score) {
+        bool was_inserted;
+        return zadd(key, member, score, was_inserted);
+    }
+    bool Connection::zadd(const Key& key, const Key& member, double score, bool& was_inserted) {
+        std::string score_s = std::to_string(score);
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        //TODO https://github.com/redis/hiredis/issues/244 Update when issue is resolved.
+        if(d->run_command("ZADD %b %b %b", prefixed_key.c_str(), prefixed_key.size(), score_s.c_str(), score_s.size(), member.c_str(), member.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            was_inserted = d->reply->integer != 0;
+            return true;
+        }
+        return false;
+    }
 
     /* Get the number of members in a sorted set */
 //        bool zcard(const Key& key);
@@ -1539,13 +1584,60 @@ namespace Redis {
 //        bool zcount(const Key& key, VAL min, VAL max);
 
     /* Increment the score of a member in a sorted set */
-//        bool zincrby(const Key& key, VAL increment, VAL member);
+    bool Connection::zincrby(const Key& key, double increment, const Key& member) {
+        double new_score;
+        return zincrby(key, increment, member, new_score);
+    }
+
+    bool Connection::zincrby(const Key& key, double increment, const Key& member, double& new_score) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        std::string increment_s = std::to_string(increment);
+        //TODO https://github.com/redis/hiredis/issues/244 Update when issue is resolved.
+        if(d->run_command("ZINCRBY %b %b %b", prefixed_key.c_str(), prefixed_key.size(), increment_s.c_str(), increment_s.size(), member.c_str(), member.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_STRING);
+            new_score = std::stod(std::string(d->reply->str, d->reply->len));
+            return true;
+        }
+        return false;
+    }
 
     /* Intersect multiple sorted sets and store the resulting sorted set in a new key */
 //        bool zinterstore(VAL destination, VAL numkeys, const KeyVec& keys /*, [WEIGHTS weight [weight ...]] */ /*, [AGGREGATE SUM|MIN|MAX] */);
 
     /* Return a range of members in a sorted set, by index */
-//        bool zrange(const Key& key, VAL start, VAL stop, bool withscores = false);
+    bool Connection::zrange(const Key& key, long long start, long long stop, StringValueHolder&& values, Order) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("ZRANGE %b %lli %lli", prefixed_key.c_str(), prefixed_key.size(), start, stop)) {
+            redis_assert(d->reply->type == REDIS_REPLY_ARRAY);
+            for(size_t i=0; i < d->reply->elements; i++) {
+                redis_assert(d->reply->element[i]->type == REDIS_REPLY_STRING);
+                values.push_back(d->reply->element[i]->str);
+            }
+            return true;
+        }
+        return false;
+    }
+    bool Connection::zrange_with_scores(const Key& key, long long start, long long stop, PairHolder<std::string, double>&& values, Order order) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        const char* command;
+        if(order == Order::ASC) {
+            command = "ZRANGE";
+        }
+        else {
+            command = "ZREVRANGE";
+        }
+        if(d->run_command("%s %b %lli %lli WITHSCORES", command, prefixed_key.c_str(), prefixed_key.size(), start, stop)) {
+            redis_assert(d->reply->type == REDIS_REPLY_ARRAY);
+            redis_assert(d->reply->elements % 2 ==0);
+            for(size_t i=0; i < d->reply->elements; i+=2) {
+                redis_assert(d->reply->element[i]->type == REDIS_REPLY_STRING);
+                redis_assert(d->reply->element[i+1]->type == REDIS_REPLY_STRING);
+                values.push_back(std::make_pair(std::string(d->reply->element[i]->str, d->reply->element[i]->len), std::stod(d->reply->element[i+1]->str)));
+            }
+            return true;
+        }
+        return false;
+    }
 
     /* Return a range of members in a sorted set, by score */
 //        bool zrangebyscore(const Key& key, VAL min, VAL max, bool withscores = false /*, [LIMIT offset count] */);
@@ -1557,7 +1649,26 @@ namespace Redis {
 //        bool zrem(const Key& key, VAL member [member ...]);
 
     /* Remove all members in a sorted set within the given indexes */
-//        bool zremrangebyrank(const Key& key, VAL start, VAL stop);
+    bool Connection::zremrangebyrank(const Key& key, long long start, long long stop, Order order) {
+        long long elements_removed_cnt;
+        return zremrangebyrank(key, start, stop, elements_removed_cnt, order);
+    }
+
+    bool Connection::zremrangebyrank(const Key& key, long long start, long long stop, long long& elements_removed_cnt, Order order) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(order == Order::DESC) {
+            long long temp;
+            temp = (start+1)*-1;
+            start = (stop+1)*-1;
+            stop = temp;
+        }
+        if(d->run_command("ZREMRANGEBYRANK %b %lli %lli", prefixed_key.c_str(), prefixed_key.size(), start, stop)) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            elements_removed_cnt = d->reply->integer;
+            return true;
+        }
+        return false;
+    }
 
     /* Remove all members in a sorted set within the given scores */
 //        bool zremrangebyscore(const Key& key, VAL min, VAL max);

@@ -550,3 +550,7 @@ void ConnectionTestAbstract::test_smembers() {
     CPPUNIT_ASSERT( result[1] == "Maryland" );
     CPPUNIT_ASSERT( result[2] == "Moscow" );
 }
+
+void ConnectionTestAbstract::test_zincrby() {
+
+}
