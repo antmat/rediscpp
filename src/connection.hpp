@@ -73,6 +73,7 @@ namespace Redis {
         Error get_errno();
         unsigned int get_version();
         Id get_id();
+        static size_t get_connection_count();
 
         //Redis commands
 
@@ -513,19 +514,22 @@ namespace Redis {
         /*******************************************************************/
 
         /* Delete one or more hash fields */
-//        bool hdel(const Key& key, VAL field [field ...]);
+        bool hdel(const Key& key);
+        bool hdel(const Key& key, bool& was_removed);
+        bool hdel(const StringKeyHolder& keys);
 
         /* Determine if a hash field exists */
 //        bool hexists(const Key& key, VAL field);
 
         /* Get the value of a hash field */
-//        bool hget(const Key& key, VAL field);
+        bool hget(const Key& key, const Key& field, Key& value);
 
         /* Get all the fields and values in a hash */
-//        bool hgetall(const Key& key);
+        bool hgetall(const Key& key, PairHolder<std::string, std::string>&& result);
 
         /* Increment the integer value of a hash field by the given number */
-//        bool hincrby(const Key& key, VAL field, VAL increment);
+        bool hincrby(const Key& key, const Key& field, long long increment);
+        bool hincrby(const Key& key, const Key& field, long long increment, long long& new_value);
 
         /* Increment the float value of a hash field by the given amount */
 //        bool hincrbyfloat(const Key& key, VAL field, VAL increment);
@@ -543,10 +547,12 @@ namespace Redis {
 //        bool hmset(const Key& key, VAL field value [field value ...]);
 
         /* Set the string value of a hash field */
-//        bool hset(const Key& key, VAL field, VAL value);
+        bool hset(const Key& key, const Key& field, const Key& value);
+        bool hset(const Key& key, const Key& field, const Key& value, bool& was_created);
 
         /* Set the value of a hash field, only if the field does not exist */
-//        bool hsetnx(const Key& key, VAL field, VAL value);
+        bool hsetnx(const Key& key, const Key& field, const Key& value);
+        bool hsetnx(const Key& key, const Key& field, const Key& value, bool& was_set);
 
         /* Get all the values in a hash */
 //        bool hvals(const Key& key);

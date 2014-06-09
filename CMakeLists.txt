@@ -10,7 +10,9 @@ use_package_shared(cppunit hiredis.h)
 
 SET(REDISCPP_SOURCE
     "${REDISCPP_SDIR}/pool.cpp"
+    "${REDISCPP_SDIR}/named_pool.cpp"
     "${REDISCPP_SDIR}/connection.cpp"
+    "${REDISCPP_SDIR}/sharded_connection.cpp"
     "${REDISCPP_SDIR}/pool_wrapper.cpp"
     "${REDISCPP_SDIR}/connection_param.cpp"
     "${REDISCPP_SDIR}/exception.cpp"
@@ -46,10 +48,13 @@ install(TARGETS rediscpp DESTINATION lib)
 install(TARGETS rediscpp-static DESTINATION lib)
 install(FILES
     "${REDISCPP_SDIR}/pool.hpp"
+    "${REDISCPP_SDIR}/named_pool.hpp"
+    "${REDISCPP_SDIR}/debug.hpp"
     "${REDISCPP_SDIR}/macro.hpp"
     "${REDISCPP_SDIR}/holders.hpp"
     "${REDISCPP_SDIR}/redis.hpp"
     "${REDISCPP_SDIR}/connection.hpp"
+    "${REDISCPP_SDIR}/sharded_connection.hpp"
     "${REDISCPP_SDIR}/pool_wrapper.hpp"
     "${REDISCPP_SDIR}/connection_param.hpp"
     "${REDISCPP_SDIR}/exception.hpp"

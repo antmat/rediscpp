@@ -30,7 +30,9 @@ namespace Redis {
                     throw_on_error == other.throw_on_error &&
                     split_long_commands == other.split_long_commands;
         }
-
+        bool operator!=(const ConnectionParam& other) const {
+            return !operator==(other);
+        }
 
         //TODO: thread safety. This one is not thread safe. It cannot be used while other operations with library are in progress
         inline static void set_default_host(const std::string& default_host) {

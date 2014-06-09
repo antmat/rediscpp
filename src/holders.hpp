@@ -1,4 +1,5 @@
 #pragma once
+#include <cwchar>
 namespace Redis {
 
     /* A some kind of Adapter class which can proxy element fetching from different container types.
@@ -221,6 +222,13 @@ namespace Redis {
         std::function<void(const std::pair<T1,T2>&)> push_back_f;
         std::function<void(std::pair<T1, T2>&&)> move_push_back_f;
     public:
+        template <class Key, class Value>
+        PairHolder(std::map<Key, Value>& keys) :
+              push_back_f([&keys](const std::pair<T1,T2>& val){keys[val.first] = val.second;}),
+              move_push_back_f([&keys](std::pair<T1, T2>&& val){keys[val.first] = val.second;})
+        {
+            keys.clear();
+        }
         template <class Container>
         PairHolder(Container& keys) :
                 push_back_f([&keys](const std::pair<T1,T2>& val){keys.push_back(val);}),

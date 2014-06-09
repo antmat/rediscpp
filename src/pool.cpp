@@ -38,8 +38,12 @@ namespace Redis {
     }
 
     size_t Pool::get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
+        return Pool::get_connection_index_by_key_and_shard_size(key, connection_params.size());
+    }
+
+    size_t Pool::get_connection_index_by_key_and_shard_size(const std::string &key, size_t shard_size) {
         static std::hash<std::string> hash_fn;
-        return hash_fn(key) % connection_params.size();
+        return hash_fn(key) % shard_size;
     }
 
     PoolWrapper Pool::get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params) {
@@ -57,6 +61,8 @@ namespace Redis {
                 return PoolWrapper(vec[i]->first, vec[i]->second);
             }
         }
+        rediscpp_debug("CONN PARAM: " << connection_param.host << connection_param.port << connection_param.db_num);
+        rediscpp_debug("hash is: " << connection_param.get_hash() <<", this:" << this << ", New connection created, current count is: " << vec.size());
         vec.emplace_back(new Impl::ConnectionWithUsage(connection_param, true));
         return PoolWrapper(vec.back()->first, vec.back()->second);
     }

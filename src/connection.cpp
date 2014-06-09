@@ -24,6 +24,7 @@ struct ContextDeleter {
 };
 
 namespace Redis {
+    static constexpr size_t max_connection_count = 1000;
     class Connection::Implementation {
         friend class Connection;
         friend class PoolWrapper;
@@ -40,6 +41,7 @@ namespace Redis {
         Error prev_err;
         Connection::Id id;
         static std::atomic_long id_counter;
+        static std::atomic_ulong connection_count;
 
         Implementation(const ConnectionParam &_connection_param) :
                 reply(),
@@ -54,8 +56,15 @@ namespace Redis {
                 id()
         {
             id = ++id_counter;
+            if(connection_count.load(std::memory_order_relaxed) > max_connection_count) {
+                throw Redis::Exception("Maximum number of connections reached.");
+            }
+            connection_count++;
             reconnect();
             fetch_version();
+        }
+        ~Implementation() {
+            connection_count--;
         }
 
         template<class Keys>
@@ -562,6 +571,7 @@ namespace Redis {
         }
     };
     std::atomic_long Connection::Implementation::id_counter(0);
+    std::atomic_ulong Connection::Implementation::connection_count(0);
 
     Connection::Connection(const ConnectionParam &connection_param) :
         d(new Connection::Implementation(connection_param))
@@ -599,7 +609,9 @@ namespace Redis {
     Connection::Id Connection::get_id() {
         return d->get_id();
     }
-
+    size_t Connection::get_connection_count() {
+        return Implementation::connection_count.load(std::memory_order_relaxed);
+    }
     bool Connection::fetch_get_result(Key& result, size_t index) {
         if( index >= d->reply->elements ) {
             return false;
@@ -1338,20 +1350,75 @@ namespace Redis {
 
     /*********************** hash commands ***********************/
     /* Delete one or more hash fields */
-//        bool hdel(const Key& key, VAL field [field ...]);
+    bool Connection::hdel(const Key& key) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("HDEL %b", prefixed_key.c_str(), prefixed_key.size());
+    }
+
+    bool Connection::hdel(const Key& key, bool& was_removed) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HDEL %b", prefixed_key.c_str(), prefixed_key.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            was_removed = d->reply->integer != 0;
+            return true;
+        }
+        return false;
+    }
+
 
     /* Determine if a hash field exists */
 //        bool hexists(const Key& key, VAL field);
 
     /* Get the value of a hash field */
-//        bool hget(const Key& key, VAL field);
+    bool Connection::hget(const Key& key, const Key& field, Key& value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HGET %b %b", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_STRING || d->reply->type == REDIS_REPLY_NIL);
+            if(d->reply->type == REDIS_REPLY_NIL) {
+                value.clear();
+            }
+            else {
+                value = std::string(d->reply->str, d->reply->len);
+            }
+            return true;
+        }
+        return false;
+    }
 
     /* Get all the fields and values in a hash */
-//        bool hgetall(const Key& key);
+    bool Connection::hgetall(const Key& key, PairHolder<std::string, std::string>&& result) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HGETALL %b", prefixed_key.c_str(), prefixed_key.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_ARRAY);
+            redis_assert(d->reply->elements % 2 ==0);
+            for(size_t i=0; i < d->reply->elements; i+=2) {
+                redis_assert(d->reply->element[i]->type == REDIS_REPLY_STRING);
+                redis_assert(d->reply->element[i+1]->type == REDIS_REPLY_STRING);
+                std::string k(d->reply->element[i]->str, d->reply->element[i]->len);
+                std::string v(d->reply->element[i+1]->str, d->reply->element[i+1]->len);
+                result.push_back(std::make_pair(std::move(k), std::move(v)));
+            }
+            return true;
+        }
+        return false;
+    }
 
     /* Increment the integer value of a hash field by the given number */
-//        bool hincrby(const Key& key, VAL field, VAL increment);
+    bool Connection::hincrby(const Key& key, const Key& field, long long increment) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("HINCRBY %b %b %lli", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), increment);
+    }
 
+    bool Connection::hincrby(const Key& key, const Key& field, long long increment, long long& result_value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HINCRBY %b %b %lli", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), increment)) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            result_value = d->reply->integer;
+            return true;
+        }
+        return false;
+
+    }
     /* Increment the float value of a hash field by the given amount */
 //        bool hincrbyfloat(const Key& key, VAL field, VAL increment);
 
@@ -1368,10 +1435,36 @@ namespace Redis {
 //        bool hmset(const Key& key, VAL field value [field value ...]);
 
     /* Set the string value of a hash field */
-//        bool hset(const Key& key, VAL field, VAL value);
+        bool Connection::hset(const Key& key, const Key& field, const Key& value) {
+            const Key& prefixed_key = d->add_prefix_to_key(key);
+            return d->run_command("HSET %b %b %b", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), value.c_str(), value.size());
+        }
+
+    bool Connection::hset(const Key& key, const Key& field, const Key& value, bool& was_created) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HSET %b %b %b", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), value.c_str(), value.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            was_created = d->reply->integer !=0;
+            return true;
+        }
+        return false;
+    }
 
     /* Set the value of a hash field, only if the field does not exist */
-//        bool hsetnx(const Key& key, VAL field, VAL value);
+    bool Connection::hsetnx(const Key& key, const Key& field, const Key& value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("HSETNX %b %b %b", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), value.c_str(), value.size());
+    }
+
+    bool Connection::hsetnx(const Key& key, const Key& field, const Key& value, bool& was_set) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HSETNX %b %b %b", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), value.c_str(), value.size())) {
+            redis_assert(d->reply->type == REDIS_REPLY_INTEGER);
+            was_set = d->reply->integer !=0;
+            return true;
+        }
+        return false;
+    }
 
     /* Get all the values in a hash */
 //        bool hvals(const Key& key);

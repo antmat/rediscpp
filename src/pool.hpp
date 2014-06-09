@@ -7,13 +7,14 @@
 #include "pool_wrapper.hpp"
 #include "connection.hpp"
 #include "connection_param.hpp"
+#include "named_pool.hpp"
 namespace Redis {
     class Pool {
-
+    friend class NamedPool::Implementation;
     public:
-        static Pool &instance();
-
+        static Pool& instance();
         size_t get_connection_index_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
+        static size_t get_connection_index_by_key_and_shard_size(const std::string &key, size_t shard_size);
         PoolWrapper get_by_key(const std::string &key, const std::vector<ConnectionParam> &connection_params);
         PoolWrapper get(const std::string &host = ConnectionParam::get_default_connection_param().host,
                 unsigned int port = ConnectionParam::get_default_connection_param().port,
@@ -35,7 +36,6 @@ namespace Redis {
         class Impl;
         Impl* d;
     };
-
 }
 
 
