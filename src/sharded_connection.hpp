@@ -18,6 +18,8 @@ namespace Redis {
         ~ShardedConnection();
         void add_connection(const ConnectionParam& conn_param);
         Connection& get(const std::string& key);
+        size_t size();
+    private:
         class Impl;
         Impl* d;
     };

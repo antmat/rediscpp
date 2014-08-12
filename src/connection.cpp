@@ -6,24 +6,27 @@
 #include <map>
 #include <atomic>
 #include "macro.hpp"
+#include "log.hpp"
 
-struct ReplyDeleter {
-    void operator()(redisReply* r) {
-        if(r != nullptr) {
-            freeReplyObject(r);
-        }
-    }
-};
 
-struct ContextDeleter {
-    void operator()(redisContext* c) {
-        if (c != nullptr) {
-            redisFree(c);
-        }
-    }
-};
 
 namespace Redis {
+    struct ReplyDeleter {
+        void operator()(redisReply* r) {
+            if(r != nullptr) {
+                freeReplyObject(r);
+            }
+        }
+    };
+
+    struct ContextDeleter {
+        void operator()(redisContext* c) {
+            if (c != nullptr) {
+                redisFree(c);
+            }
+        }
+    };
+
     static constexpr size_t max_connection_count = 1000;
     class Connection::Implementation {
         friend class Connection;
@@ -56,15 +59,23 @@ namespace Redis {
                 id()
         {
             id = ++id_counter;
-            if(connection_count.load(std::memory_order_relaxed) > max_connection_count) {
+            unsigned long con_cnt = connection_count.load(std::memory_order_relaxed);
+            if(con_cnt >= max_connection_count) {
                 throw Redis::Exception("Maximum number of connections reached.");
             }
             connection_count++;
-            reconnect();
-            fetch_version();
+            if(reconnect()) {
+                rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect done");
+                fetch_version();
+            }
+            else {
+                rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect failed");
+            }
+            rediscpp_debug(LogLevel::NOTICE, "Connection created. Est. current number of connections: " << con_cnt);
         }
         ~Implementation() {
             connection_count--;
+            rediscpp_debug(LogLevel::NOTICE, "Connection destroyed. Est. current number of connections: " << connection_count.load(std::memory_order_relaxed));
         }
 
         template<class Keys>
@@ -153,6 +164,7 @@ namespace Redis {
         }
 
         bool reconnect() {
+            rediscpp_debug(LL::NOTICE, "Reconnecting");
             struct timeval timeout = {static_cast<time_t>(connection_param.connect_timeout_ms % 1000), static_cast<suseconds_t>(connection_param.connect_timeout_ms * 1000)};
             context.reset(redisConnectWithTimeout(connection_param.host.c_str(), connection_param.port, timeout));
             if (context == nullptr) {
@@ -163,11 +175,21 @@ namespace Redis {
                 set_error_from_context(true);
                 available = (err == Error::NONE);
             }
+            if(!available) {
+                rediscpp_debug(LL::WARNING, "Not available. reason:" << get_error());
+            }
             if(available && !connection_param.password.empty()) {
                 //TODO: AUTH
             }
             if(available && connection_param.db_num != 0) {
+                bool old_val = connection_param.reconnect_on_failure;
+                //as it's internally performs command we don't need reconnect
+                connection_param.reconnect_on_failure = false;
                 available = select(connection_param.db_num);
+                connection_param.reconnect_on_failure = old_val;
+                if(!available) {
+                    rediscpp_debug(LL::WARNING, "Could not select DB: " << get_error());
+                }
             }
             return available;
         }
@@ -215,8 +237,11 @@ namespace Redis {
                     err = Error::HIREDIS_UNKNOWN;
                     break;
             }
-            if (!never_thow && err != Error::NONE && connection_param.throw_on_error) {
-                throw Redis::Exception(get_error_str(err, context.get(), reply.get()));
+            if(err != Error::NONE) {
+                rediscpp_debug(LL::WARNING, __FUNCTION__ << ": error is " << get_error_str(err, context.get(), reply.get()));
+                if (!never_thow && err != Error::NONE && connection_param.throw_on_error) {
+                    throw Redis::Exception(get_error_str(err, context.get(), reply.get()));
+                }
             }
         }
 
@@ -247,7 +272,14 @@ namespace Redis {
                 return false;
             }
             reply.reset(static_cast<redisReply*>(callback()));
+            if(reply.get() == nullptr) {
+                rediscpp_debug(LL::WARNING, "Got NULL reply");
+            }
+            else if(context->err) {
+                rediscpp_debug(LL::WARNING, "Error on context: " << context->err);
+            }
             if((reply.get() == nullptr || context->err) && connection_param.reconnect_on_failure) {
+                rediscpp_debug(LL::NOTICE, "Reconnecting for command");
                 reconnect();
                 if (!is_available()) {
                     if(connection_param.throw_on_error) {
@@ -257,6 +289,7 @@ namespace Redis {
                 }
                 reply.reset(static_cast<redisReply*>(callback()));
             }
+
             set_error_from_context();
             if(err != Error::NONE) {
                 return false;
@@ -278,17 +311,23 @@ namespace Redis {
         }
 
         bool run_command(const std::vector<const char*>& commands, const std::vector<size_t>& sizes) {
-            auto callback = [&](){ return redisCommandArgv(context.get(), static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data());};
+            auto callback = [&](){
+                redis_assert(!commands.empty());
+                rediscpp_debug(LL::NOTICE, connection_param.host << ":" << connection_param.port << ":" << connection_param.db_num << " : " << "Command(first member): " << commands[0] );
+                return redisCommandArgv(context.get(), static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data());
+            };
             return run_command(callback);
         }
         bool run_command(const char* format, va_list ap) {
             auto callback = [&]() {
                 va_list copy;
                 va_copy(copy, ap);
+                rediscpp_debug(LL::NOTICE, connection_param.host << ":" << connection_param.port << ":" << connection_param.db_num << " : " << "Command: " << format );
                 void* ret = redisvCommand(context.get(), format, ap);
                 va_end(copy);
                 return ret;
             };
+
             return run_command(callback);
         }
         bool run_command(const char* format, ...) {
@@ -1420,7 +1459,21 @@ namespace Redis {
 
     }
     /* Increment the float value of a hash field by the given amount */
-//        bool hincrbyfloat(const Key& key, VAL field, VAL increment);
+    bool Connection::hincrby(const Key& key, const Key& field, double increment) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        return d->run_command("HINCRBYFLOAT %b %b %f", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), increment);
+    }
+
+    bool Connection::hincrby(const Key& key, const Key& field, double increment, double& result_value) {
+        const Key& prefixed_key = d->add_prefix_to_key(key);
+        if(d->run_command("HINCRBYFLOAT %b %b %f", prefixed_key.c_str(), prefixed_key.size(), field.c_str(), field.size(), increment)) {
+            redis_assert(d->reply->type == REDIS_REPLY_STRING);
+            result_value = std::stod(d->reply->str);
+            return true;
+        }
+        return false;
+
+    }
 
     /* Get all the fields in a hash */
 //        bool hkeys(const Key& key);

@@ -1,4 +1,5 @@
 #pragma once
+#include "log.hpp"
 #include "connection.hpp"
 #include "sharded_connection.hpp"
 #include "connection_param.hpp"

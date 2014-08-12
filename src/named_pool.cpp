@@ -1,5 +1,6 @@
 #include "named_pool.hpp"
 #include "pool.hpp"
+#include "log.hpp"
 #include <map>
 #include <mutex>
 #include <array>
@@ -57,7 +58,7 @@ namespace Redis {
         std::lock_guard<std::mutex> guard(Implementation::mutexes[bucket]);
 
         auto& ptr = Implementation::instances[bucket][name];
-        rediscpp_debug("Going to create Named Pool");
+        rediscpp_debug(LL::NOTICE, "Going to create Named Pool");
 
         if(Implementation::is_created_no_lock(name)) {
             redis_assert(ptr != nullptr);

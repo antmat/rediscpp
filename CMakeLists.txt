@@ -9,6 +9,7 @@ use_package_shared(hiredis hiredis.h)
 use_package_shared(cppunit hiredis.h)
 
 SET(REDISCPP_SOURCE
+    "${REDISCPP_SDIR}/log.cpp"
     "${REDISCPP_SDIR}/pool.cpp"
     "${REDISCPP_SDIR}/named_pool.cpp"
     "${REDISCPP_SDIR}/connection.cpp"
@@ -47,6 +48,7 @@ endif()
 install(TARGETS rediscpp DESTINATION lib)
 install(TARGETS rediscpp-static DESTINATION lib)
 install(FILES
+    "${REDISCPP_SDIR}/log.hpp"
     "${REDISCPP_SDIR}/pool.hpp"
     "${REDISCPP_SDIR}/named_pool.hpp"
     "${REDISCPP_SDIR}/debug.hpp"

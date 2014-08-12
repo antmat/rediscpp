@@ -50,6 +50,11 @@ namespace Redis {
         return d->connections[index];
     }
 
+    size_t ShardedConnection::size() {
+        return d->connections.size();
+        return d->connections.size();
+    }
+
 }
 
 

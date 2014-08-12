@@ -532,7 +532,9 @@ namespace Redis {
         bool hincrby(const Key& key, const Key& field, long long increment, long long& new_value);
 
         /* Increment the float value of a hash field by the given amount */
-//        bool hincrbyfloat(const Key& key, VAL field, VAL increment);
+        bool hincrby(const Key& key, const Key& field, double increment);
+        bool hincrby(const Key& key, const Key& field, double increment, double& new_value);
+
 
         /* Get all the fields in a hash */
 //        bool hkeys(const Key& key);

@@ -1,4 +1,5 @@
 #include "redis.hpp"
+#include "log.hpp"
 #include <thread>
 #include <unordered_map>
 
@@ -61,8 +62,8 @@ namespace Redis {
                 return PoolWrapper(vec[i]->first, vec[i]->second);
             }
         }
-        rediscpp_debug("CONN PARAM: " << connection_param.host << connection_param.port << connection_param.db_num);
-        rediscpp_debug("hash is: " << connection_param.get_hash() <<", this:" << this << ", New connection created, current count is: " << vec.size());
+        rediscpp_debug(LL::NOTICE, "CONN PARAM: " << connection_param.host << connection_param.port << connection_param.db_num);
+        rediscpp_debug(LL::NOTICE, "hash is: " << connection_param.get_hash() <<", this:" << this << ", New connection created, current pool key count is: " << vec.size());
         vec.emplace_back(new Impl::ConnectionWithUsage(connection_param, true));
         return PoolWrapper(vec.back()->first, vec.back()->second);
     }
