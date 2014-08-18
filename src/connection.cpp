@@ -36,6 +36,7 @@ namespace Redis {
         Reply reply;
         ConnectionParam connection_param;
         bool available;
+        bool connected;
         bool used;
         std::unique_ptr<redisContext, ContextDeleter> context;
         std::hash<std::string> hash_fn;
@@ -50,6 +51,7 @@ namespace Redis {
                 reply(),
                 connection_param(_connection_param),
                 available(false),
+                connected(false),
                 used(true),
                 context(),
                 hash_fn(),
@@ -64,13 +66,7 @@ namespace Redis {
                 throw Redis::Exception("Maximum number of connections reached.");
             }
             connection_count++;
-            if(reconnect()) {
-                rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect done");
-                fetch_version();
-            }
-            else {
-                rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect failed");
-            }
+
             rediscpp_debug(LogLevel::NOTICE, "Connection created. Est. current number of connections: " << con_cnt);
         }
         ~Implementation() {
@@ -268,6 +264,16 @@ namespace Redis {
 
 
         bool run_command(std::function<void*()> callback) {
+            if (!connected) {
+                connected = true;
+                if (reconnect()) {
+                    rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect done");
+                    fetch_version();
+                }
+                else {
+                    rediscpp_debug(LogLevel::NOTICE, __FUNCTION__ << ": Reconnect failed");
+                }
+            }
             if (!check_available()) {
                 return false;
             }
