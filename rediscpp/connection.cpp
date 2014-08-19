@@ -173,8 +173,10 @@ namespace Redis {
                 set_error_from_context(true);
                 timeout.tv_sec = static_cast<time_t>(connection_param.operation_timeout_ms / 1000);
                 timeout.tv_usec = static_cast<suseconds_t>((connection_param.operation_timeout_ms % 1000) * 1000);
-                redisSetTimeout(context.get(), timeout);
                 available = (err == Error::NONE);
+                if(available) {
+                    redisSetTimeout(context.get(), timeout);
+                }
             }
             if(!available) {
                 rediscpp_debug(LL::WARNING, "Not available. reason:" << get_error());
@@ -239,7 +241,6 @@ namespace Redis {
                     break;
             }
             if(err != Error::NONE) {
-                rediscpp_debug(LL::WARNING, __FUNCTION__ << ": error is " << get_error_str(err, context.get(), reply.get()));
                 if (!never_thow && err != Error::NONE && connection_param.throw_on_error) {
                     throw Redis::Exception(get_error_str(err, context.get(), reply.get()));
                 }
@@ -303,6 +304,7 @@ namespace Redis {
 
             set_error_from_context();
             if(err != Error::NONE) {
+                rediscpp_debug(LL::WARNING, "Error after command: " << get_error());
                 return false;
             }
             //This actually should never happen. But who knows.
