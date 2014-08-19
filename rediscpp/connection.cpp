@@ -161,7 +161,9 @@ namespace Redis {
 
         bool reconnect() {
             rediscpp_debug(LL::NOTICE, "Reconnecting");
-            struct timeval timeout = {static_cast<time_t>(connection_param.connect_timeout_ms % 1000), static_cast<suseconds_t>(connection_param.connect_timeout_ms * 1000)};
+            struct timeval timeout;
+            timeout.tv_sec = static_cast<time_t>(connection_param.connect_timeout_ms / 1000);
+            timeout.tv_usec = static_cast<suseconds_t>((connection_param.connect_timeout_ms % 1000) * 1000);
             context.reset(redisConnectWithTimeout(connection_param.host.c_str(), connection_param.port, timeout));
             if (context == nullptr) {
                 set_error(Error::CONTEXT_IS_NULL);
@@ -169,6 +171,9 @@ namespace Redis {
             }
             else {
                 set_error_from_context(true);
+                timeout.tv_sec = static_cast<time_t>(connection_param.operation_timeout_ms / 1000);
+                timeout.tv_usec = static_cast<suseconds_t>((connection_param.operation_timeout_ms % 1000) * 1000);
+                redisSetTimeout(context.get(), timeout);
                 available = (err == Error::NONE);
             }
             if(!available) {
