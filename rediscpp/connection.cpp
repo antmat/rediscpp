@@ -269,7 +269,7 @@ namespace Redis {
         }
 
 
-        bool run_command(std::function<void*()> callback) {
+        bool run_command(std::function<void*(redisContext*)> callback) {
             if (!connected) {
                 connected = true;
                 if (reconnect()) {
@@ -283,7 +283,8 @@ namespace Redis {
             if (!check_available()) {
                 return false;
             }
-            reply.reset(static_cast<redisReply*>(callback()));
+            redis_assert(context.get() != nullptr);
+            reply.reset(static_cast<redisReply*>(callback(context.get())));
             if(reply.get() == nullptr) {
                 rediscpp_debug(LL::WARNING, "Got NULL reply");
             }
@@ -294,12 +295,13 @@ namespace Redis {
                 rediscpp_debug(LL::NOTICE, "Reconnecting for command");
                 reconnect();
                 if (!is_available()) {
-                    if(connection_param.throw_on_error) {
+                    if (connection_param.throw_on_error) {
                         throw Redis::Exception(get_error());
                     }
                     return false;
                 }
-                reply.reset(static_cast<redisReply*>(callback()));
+                redis_assert(context.get() != nullptr);
+                reply.reset(static_cast<redisReply*>(callback(context.get())));
             }
 
             set_error_from_context();
@@ -324,13 +326,14 @@ namespace Redis {
         }
 
         bool run_command(const std::vector<const char*>& commands, const std::vector<size_t>& sizes) {
-            auto callback = [&](){
+            auto callback = [&](redisContext* c){
                 redis_assert(!commands.empty());
                 rediscpp_debug(LL::NOTICE, connection_param.host << ":" << connection_param.port << ":" << connection_param.db_num << " : " << "Command(first member): " << commands[0] );
-                return redisCommandArgv(context.get(), static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data());
+                return redisCommandArgv(c, static_cast<int>(commands.size()), const_cast<const char**>(commands.data()), sizes.data());
             };
             return run_command(callback);
         }
+        /*
         bool run_command(const char* format, va_list ap) {
             auto callback = [&]() {
                 va_list copy;
@@ -342,14 +345,20 @@ namespace Redis {
             };
 
             return run_command(callback);
+        }*/
+        template<class ...Args>
+        bool run_command(const char* format, const Args& ... args) {
+            std::function<void*(redisContext*)> callback = std::bind(redisCommand, std::placeholders::_1, format, args...);
+            return run_command(callback);
         }
+        /*
         bool run_command(const char* format, ...) {
             va_list ap;
             va_start(ap,format);
             bool ret = run_command(format,ap);
             va_end(ap);
             return ret;
-        }
+        }*/
         bool info(const Key& section, Key& info_data) {
             if(!section.empty() && redis_version < 20600) {
                 set_error(Error::COMMAND_UNSUPPORTED);
